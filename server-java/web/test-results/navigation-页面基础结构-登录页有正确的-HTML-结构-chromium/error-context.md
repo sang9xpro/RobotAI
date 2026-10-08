@@ -1,0 +1,60 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e10]:
+    - generic [ref=e11]: 登录
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic "用户名" [ref=e16]
+        - generic [ref=e20]:
+          - img "user" [ref=e22]:
+            - img [ref=e23]
+          - textbox "用户名" [ref=e25]:
+            - /placeholder: 请输入用户名
+      - generic [ref=e27]:
+        - generic "密码" [ref=e29]
+        - generic [ref=e33]:
+          - img "lock" [ref=e35]:
+            - img [ref=e36]
+          - textbox "密码" [ref=e38]:
+            - /placeholder: 请输入密码
+          - img "eye-invisible" [ref=e40] [cursor=pointer]:
+            - img [ref=e41]
+      - generic [ref=e44]:
+        - generic [ref=e46] [cursor=pointer]:
+          - checkbox "记住我" [ref=e48]
+          - generic [ref=e50]: 记住我
+        - link "忘记密码" [ref=e52] [cursor=pointer]:
+          - /url: /forget
+      - button "登 录" [ref=e58] [cursor=pointer]:
+        - generic [ref=e59]: 登 录
+      - generic [ref=e60]:
+        - text: 登录即表示您同意
+        - link "隐私政策" [ref=e61] [cursor=pointer]:
+          - /url: "#"
+        - text: 和
+        - link "服务条款" [ref=e62] [cursor=pointer]:
+          - /url: "#"
+      - separator [ref=e63]:
+        - generic [ref=e64]: 其他方式登录
+      - generic [ref=e65]:
+        - button "wechat" [ref=e67] [cursor=pointer]:
+          - img "wechat" [ref=e68]:
+            - img [ref=e69]
+        - button "qq" [ref=e72] [cursor=pointer]:
+          - img "qq" [ref=e73]:
+            - img [ref=e74]
+        - button "mobile" [ref=e77] [cursor=pointer]:
+          - img "mobile" [ref=e78]:
+            - img [ref=e79]
+      - generic [ref=e81]:
+        - text: 没有账号？
+        - link "注册" [ref=e82] [cursor=pointer]:
+          - /url: /register
+  - generic [ref=e83]:
+    - generic "Toggle devtools panel" [ref=e84] [cursor=pointer]:
+      - img [ref=e85]
+    - generic "Toggle Component Inspector" [ref=e90] [cursor=pointer]:
+      - img [ref=e91]
+```

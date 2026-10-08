@@ -1,0 +1,162 @@
+package com.xiaozhi.ai.llm.factory.providers;
+
+import com.xiaozhi.ai.llm.factory.ChatModelProvider;
+import com.xiaozhi.common.AppVirtualThreads;
+import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.common.model.bo.RoleBO;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.document.MetadataMode;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.model.NoopApiKey;
+import org.springframework.ai.model.SimpleApiKey;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.reactive.JdkClientHttpConnector;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+
+import lombok.extern.slf4j.Slf4j;
+/**
+ * OpenAI及兼容OpenAI协议的模型提供者。
+ * 支持: OpenAI, Azure OpenAI, 各种兼容OpenAI的本地模型等。
+ * <p>
+ * 通过配置 {@code enableThinking} 控制是否启用推理模式（{@code reasoningEffort}）。
+ */
+@Slf4j
+@Component
+public class OpenAiModelProvider implements ChatModelProvider {
+
+    private static final ExecutorService HTTP_EXECUTOR = AppVirtualThreads.newPerTaskExecutor("openai-http-");
+
+    @Lazy
+    @Autowired
+    private ToolCallingManager toolCallingManager;
+
+    @Autowired
+    private ObservationRegistry observationRegistry;
+    
+    @Override
+    public String getProviderName() {
+        return "openai";
+    }
+    
+    @Override
+    public ChatModel createChatModel(ConfigBO config, RoleBO role) {
+        String endpoint = config.getApiUrl();
+        String apiKey = config.getApiKey();
+        String model = config.getConfigName();
+        Double temperature = role.getTemperature();
+        Double topP = role.getTopP();
+
+        var openAiApi = OpenAiApi.builder()
+                .apiKey(StringUtils.hasText(apiKey) ? new SimpleApiKey(apiKey) : new NoopApiKey())
+                .baseUrl(endpoint)
+                .completionsPath("/chat/completions")
+                .webClientBuilder(WebClient.builder()
+                        // Force HTTP/1.1 for streaming
+                        .clientConnector(new JdkClientHttpConnector(newHttpClient())))
+                .restClientBuilder(RestClient.builder()
+                        .requestFactory(createRequestFactory()))
+                .build();
+
+        boolean enableThinking = Boolean.TRUE.equals(config.getEnableThinking());
+
+        var chatOptionsBuilder = OpenAiChatOptions.builder()
+                .model(model)
+                .temperature(temperature)
+                .topP(topP)
+                .maxCompletionTokens(2000)
+                .streamUsage(true);
+
+        applyThinkingOptions(chatOptionsBuilder, enableThinking, model);
+        applyProviderOptions(chatOptionsBuilder, model);
+
+        var openAiChatOptions = chatOptionsBuilder.build();
+        
+        var chatModel = OpenAiChatModel.builder()
+                .openAiApi(openAiApi)
+                .defaultOptions(openAiChatOptions)
+                .toolCallingManager(toolCallingManager)
+                .observationRegistry(observationRegistry)
+                .build();
+        
+        log.info("Created OpenAI ChatModel: model={}, endpoint={}, thinking={}", model, endpoint, enableThinking);
+        return chatModel;
+    }
+
+    /**
+     * 应用思考（推理）相关参数。
+     * <p>
+     * OpenAI 及标准兼容协议：启用时设置 {@code reasoningEffort=medium}，
+     * 关闭时不下发该参数（由服务端决定默认行为）。
+     * 子类可 override 以适配各厂商差异（如火山需要显式下发以关闭思考）。
+     *
+     * @param builder        OpenAiChatOptions 构造器
+     * @param enableThinking 是否启用思考
+     * @param model          模型名称（用于日志）
+     */
+    protected void applyThinkingOptions(OpenAiChatOptions.Builder builder, boolean enableThinking, String model) {
+        if (enableThinking) {
+            builder.reasoningEffort("medium");
+            log.info("OpenAI model {} 已启用思考模式，reasoningEffort=medium", model);
+        }
+    }
+
+    /**
+     * 应用提供商专属的 Chat API 请求参数。
+     *
+     * @param builder Chat 选项构造器
+     * @param model   模型名称（用于日志）
+     */
+    protected void applyProviderOptions(OpenAiChatOptions.Builder builder, String model) {
+    }
+
+    @Override
+    public EmbeddingModel createEmbeddingModel(ConfigBO config) {
+        var openAiApi = OpenAiApi.builder()
+                .apiKey(StringUtils.hasText(config.getApiKey()) ? new SimpleApiKey(config.getApiKey()) : new NoopApiKey())
+                .baseUrl(config.getApiUrl())
+                .embeddingsPath("/embeddings")
+                .webClientBuilder(WebClient.builder()
+                        .clientConnector(new JdkClientHttpConnector(newHttpClient())))
+                .restClientBuilder(RestClient.builder()
+                        .requestFactory(createRequestFactory()))
+                .build();
+        var options = OpenAiEmbeddingOptions.builder().model(config.getConfigName()).build();
+        log.debug("创建 OpenAI EmbeddingModel: model={}, endpoint={}", config.getConfigName(), config.getApiUrl());
+        return new OpenAiEmbeddingModel(openAiApi, MetadataMode.EMBED, options);
+    }
+
+    /**
+     * LM Studio 不支持 HTTP/2，统一走 HTTP/1.1。
+     * 必须显式给执行器：HttpClient 自带线程的上下文类加载器是系统类加载器，fat jar 下看不到 BOOT-INF/lib，
+     * 流式回调里派生出去的压缩、落库线程会继承这个错的加载器。
+     */
+    private static HttpClient newHttpClient() {
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(30))
+                .executor(HTTP_EXECUTOR)
+                .build();
+    }
+
+    private JdkClientHttpRequestFactory createRequestFactory() {
+        var factory = new JdkClientHttpRequestFactory(newHttpClient());
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return factory;
+    }
+}

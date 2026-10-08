@@ -1,0 +1,61 @@
+/**
+ * 统一的 API 类型定义
+ */
+
+/**
+ * API 响应基础接口
+ */
+export interface ApiResponse<T = unknown> {
+  code: number
+  data: T
+  message: string
+  timestamp?: number
+  success?: boolean
+}
+
+/**
+ * 分页数据
+ * pageNo / pageSize 是回显用的请求参数，前端只消费 list 与 total
+ */
+export interface PageData<T = unknown> {
+  list: T[]
+  total: number
+  pageNo?: number
+  pageSize?: number
+}
+
+/**
+ * 分页响应接口
+ */
+export interface PageResponse<T = unknown> extends ApiResponse<PageData<T>> {
+  data: PageData<T>
+}
+
+/**
+ * 列表响应接口（不带分页）
+ */
+export interface ListResponse<T = unknown> extends ApiResponse<T[]> {
+  data: T[]
+}
+
+/**
+ * 通用响应接口（任意数据）
+ */
+export interface DataResponse<T = unknown> extends ApiResponse<T> {
+  data: T
+}
+
+/**
+ * 查询参数基础接口
+ */
+export interface BaseQueryParams {
+  [key: string]: unknown
+}
+
+/**
+ * 分页查询参数
+ */
+export interface PageQueryParams extends BaseQueryParams {
+  pageNo?: number
+  pageSize?: number
+}

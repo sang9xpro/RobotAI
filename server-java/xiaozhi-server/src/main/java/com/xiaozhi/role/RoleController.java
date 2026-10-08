@@ -1,0 +1,200 @@
+package com.xiaozhi.role;
+
+import com.xiaozhi.server.web.BaseController;
+
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.stp.StpUtil;
+import com.xiaozhi.common.annotation.AuditLog;
+import com.xiaozhi.common.annotation.CheckOwner;
+import com.xiaozhi.common.exception.OperationFailedException;
+import com.xiaozhi.common.exception.ResourceNotFoundException;
+import com.xiaozhi.common.model.req.RoleCreateReq;
+import com.xiaozhi.common.model.req.RolePageReq;
+import com.xiaozhi.common.model.req.RoleUpdateReq;
+import com.xiaozhi.common.model.req.TestVoiceReq;
+import com.xiaozhi.common.model.PageResult;
+import com.xiaozhi.common.model.resp.RoleResp;
+import com.xiaozhi.common.model.resp.LocalSttResp;
+import com.xiaozhi.common.model.resp.SherpaVoiceResp;
+import com.xiaozhi.common.model.resp.TestVoiceResp;
+import com.xiaozhi.common.web.ApiResponse;
+import com.xiaozhi.ai.stt.SttServiceFactory;
+import com.xiaozhi.ai.tts.SherpaVoiceProbe;
+import com.xiaozhi.ai.tts.TtsServiceFactory;
+import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.config.service.ConfigService;
+import com.xiaozhi.storage.service.StorageService;
+import com.xiaozhi.storage.service.StorageServiceFactory;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.*;
+
+import java.nio.file.Path;
+import java.util.List;
+
+/**
+ * 角色管理
+ * 
+ * @author Joey
+ * 
+ */
+
+@Slf4j
+@RestController
+@RequestMapping("/api/role")
+@Tag(name = "角色管理", description = "角色相关操作")
+public class RoleController extends BaseController {
+
+    @Resource
+    private RoleAppService roleAppService;
+
+    @Resource
+    private SherpaVoiceProbe sherpaVoiceProbe;
+
+    @Resource
+    private SttServiceFactory sttServiceFactory;
+
+    @Resource
+    private TtsServiceFactory ttsService;
+
+    @Resource
+    private ConfigService configService;
+
+    @Resource
+    private StorageServiceFactory storageServiceFactory;
+
+    /**
+     * 角色查询
+     *
+     * @param req
+     * @return roleList
+     */
+    @GetMapping("")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:list")
+    @Operation(summary = "根据条件查询角色信息", description = "返回角色信息列表")
+    public ApiResponse<PageResult<RoleResp>> list(@Valid RolePageReq req) {
+        return ApiResponse.success(roleAppService.page(req, StpUtil.getLoginIdAsInt()));
+    }
+
+    /**
+     * 角色信息更新
+     *
+     * @param roleId 角色ID
+     * @param param 更新参数
+     * @return
+     */
+    @PutMapping("/{roleId}")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:update")
+    @CheckOwner(resource = "role", id = "#roleId")
+    @AuditLog(module = "角色管理", operation = "更新角色")
+    @CheckOwner(resource = "config", id = "#param.modelId")
+    @CheckOwner(resource = "config", id = "#param.sttId != null && #param.sttId > 0 ? #param.sttId : null")
+    @CheckOwner(resource = "config", id = "#param.ttsId != null && #param.ttsId > 0 ? #param.ttsId : null")
+    @Operation(summary = "更新角色信息", description = "更新语音助手角色配置")
+    public ApiResponse<RoleResp> update(@PathVariable Integer roleId, @Valid @RequestBody RoleUpdateReq param) {
+        return ApiResponse.success(roleAppService.update(roleId, param));
+    }
+
+    /**
+     * 添加角色
+     *
+     * @param param 添加参数
+     */
+    @PostMapping("")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:create")
+    @AuditLog(module = "角色管理", operation = "创建角色")
+    @CheckOwner(resource = "config", id = "#param.modelId")
+    @CheckOwner(resource = "config", id = "#param.sttId != null && #param.sttId > 0 ? #param.sttId : null")
+    @CheckOwner(resource = "config", id = "#param.ttsId != null && #param.ttsId > 0 ? #param.ttsId : null")
+    @Operation(summary = "添加角色信息", description = "添加新的语音助手角色")
+    public ApiResponse<RoleResp> create(@Valid @RequestBody RoleCreateReq param) {
+        return ApiResponse.success(roleAppService.create(param, StpUtil.getLoginIdAsInt()));
+    }
+
+    /**
+     * 删除角色
+     *
+     * @param roleId 角色ID
+     * @return
+     */
+    @DeleteMapping("/{roleId}")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:delete")
+    @CheckOwner(resource = "role", id = "#roleId")
+    @AuditLog(module = "角色管理", operation = "删除角色")
+    @Operation(summary = "删除角色信息", description = "删除指定的语音助手角色")
+    public ApiResponse<Void> delete(@PathVariable Integer roleId) {
+        roleAppService.delete(roleId);
+        return ApiResponse.success("删除成功");
+    }
+
+    /**
+     * 扫描配置的本地 TTS 模型目录，动态返回所有可用的 sherpa-onnx 音色列表
+     */
+    @GetMapping("/sherpaVoices")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:list")
+    @Operation(summary = "获取本地 sherpa-onnx 音色列表", description = "扫描配置的本地 TTS 模型目录，自动识别模型类型和 speaker")
+    public ApiResponse<List<SherpaVoiceResp>> listSherpaVoices() {
+        return ApiResponse.success(sherpaVoiceProbe.listVoices());
+    }
+
+    /**
+     * 本地语音识别当前加载的模型。本地 provider 不进配置页，角色页的"本地识别"选项靠它显示到底是 SenseVoice 还是 Vosk
+     */
+    @GetMapping("/localStt")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:list")
+    @Operation(summary = "获取本地语音识别状态", description = "返回服务端启动时加载成功的本地 STT provider，模型都未就位时 provider 为空")
+    public ApiResponse<LocalSttResp> localStt() {
+        String provider = sttServiceFactory.getLocalDefaultProvider();
+        return ApiResponse.success(new LocalSttResp(provider, sttServiceFactory.isLocalDefaultAvailable()));
+    }
+
+    @GetMapping("/testVoice")
+    @ResponseBody
+    @SaCheckPermission("system:role:api:list")
+    @CheckOwner(resource = "config", id = "#param.provider != 'edge' ? #param.ttsId : null")
+    @Operation(summary = "测试语音合成", description = "测试指定配置的语音合成效果")
+    public ApiResponse<TestVoiceResp> testAudio(@Valid TestVoiceReq param) {
+        ConfigBO config = null;
+        if (!param.getProvider().equals("edge")) {
+            if (param.getTtsId() == null) {
+                throw new IllegalArgumentException("非 edge 提供方必须指定语音配置");
+            }
+            config = configService.getBO(param.getTtsId());
+            if (config == null) {
+                throw new ResourceNotFoundException("语音配置不存在或无权访问");
+            }
+        }
+
+        try {
+            Path audioFilePath = ttsService.getTtsService(config, param.getVoiceName(), param.getTtsPitch(), param.getTtsSpeed())
+                    .textToSpeech(param.getMessage());
+
+            if (audioFilePath == null) {
+                throw new OperationFailedException("测试语音合成失败：未生成音频");
+            }
+
+            // 上传到当前生效的存储服务：本地返回相对路径，云存储返回完整 URL 并接管本地文件。
+            // 返回值经 @SignedFileUrl 由响应 Advice 统一签名，故本地/云端配置均生效。
+            StorageService storageService = storageServiceFactory.getStorageService();
+            String storedPath = storageService.upload(audioFilePath, audioFilePath.toString());
+
+            return ApiResponse.success("操作成功", new TestVoiceResp(storedPath));
+        } catch (IndexOutOfBoundsException e) {
+            log.error("请先到语音合成配置页面配置对应Key", e);
+            throw new IllegalStateException("请先到语音合成配置页面配置对应Key", e);
+        } catch (Exception e) {
+            log.error("测试语音合成失败", e);
+            throw new OperationFailedException("测试语音合成失败", e);
+        }
+    }
+}

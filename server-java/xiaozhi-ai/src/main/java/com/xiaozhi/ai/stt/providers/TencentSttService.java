@@ -1,0 +1,366 @@
+package com.xiaozhi.ai.stt.providers;
+
+import com.tencent.asrv2.SpeechRecognizer;
+import com.tencent.asrv2.SpeechRecognizerListener;
+import com.tencent.asrv2.SpeechRecognizerRequest;
+import com.tencent.asrv2.SpeechRecognizerResponse;
+import com.tencent.core.ws.Credential;
+import com.tencent.core.ws.SpeechClient;
+import com.xiaozhi.common.annotation.MonitoredOperation;
+import com.xiaozhi.ai.stt.Hotword;
+import com.xiaozhi.ai.stt.SttResult;
+import com.xiaozhi.ai.stt.SttService;
+import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.ai.utils.HttpUtil;
+
+import okhttp3.*;
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class TencentSttService implements SttService {
+    private static final String PROVIDER_NAME = "tencent";
+    private static final String API_URL = "https://asr.tencentcloudapi.com";
+    private static final int QUEUE_TIMEOUT_MS = 100; // 队列等待超时时间
+    // 上游未终结音频流时的兜底上限，需远大于设备上行抖动，否则弱网会截断用户没说完的话
+    private static final long IDLE_TIMEOUT_MS = 5000;
+    private static final long RECOGNITION_TIMEOUT_MS = 90000; // 识别超时时间（90秒）
+    // 临时热词表的条数上限，由腾讯侧规定
+    private static final int MAX_HOTWORDS = 128;
+
+    // 使用腾讯云SDK的默认URL
+    private static final String WS_API_URL = "wss://asr.cloud.tencent.com/asr/v2/";
+
+    private String secretId;
+    private String secretKey;
+    private String appId;
+
+    private final static OkHttpClient client = HttpUtil.client;
+
+    // 全局共享的SpeechClient实例
+    private final SpeechClient speechClient = new SpeechClient(WS_API_URL);
+
+    // 存储当前活跃的识别会话
+    private final ConcurrentHashMap<String, SpeechRecognizer> activeRecognizers = new ConcurrentHashMap<>();
+
+    static {
+        Thread.startVirtualThread(() -> {
+            try {
+                Request request = new Request.Builder().url(API_URL).head().build();
+                Response response = client.newCall(request).execute();
+                response.close(); // 不读取内容，仅建立连接，用以提速后续的请求
+            } catch (Exception e) {
+                log.error("初始化TencentSttService STT服务时发生错误", e);
+            }
+        });
+    }
+
+    public TencentSttService(ConfigBO config) {
+        if (config != null) {
+            this.secretId = config.getApiKey();
+            this.secretKey = config.getApiSecret();
+            this.appId = config.getAppId();
+        }
+    }
+
+    @Override
+    public String getProviderName() {
+        return PROVIDER_NAME;
+    }
+
+    @Override
+    public SttResult stream(Flux<byte[]> audioSink) {
+        return stream(audioSink, text -> {
+        });
+    }
+
+    @MonitoredOperation(name = "xiaozhi.stt.stream")
+    @Override
+    public SttResult stream(Flux<byte[]> audioSink, Consumer<String> onPartialText) {
+        return stream(audioSink, onPartialText, List.of());
+    }
+
+    @MonitoredOperation(name = "xiaozhi.stt.stream")
+    @Override
+    public SttResult stream(Flux<byte[]> audioSink, Consumer<String> onPartialText, List<Hotword> hotwords) {
+        // 检查配置是否已设置
+        if (secretId == null || secretKey == null || appId == null) {
+            log.error("腾讯云语音识别配置未设置，无法进行识别");
+            return SttResult.failure(SttResult.FAILURE_LOCAL_ERROR);
+        }
+
+        // 使用阻塞队列存储音频数据
+        BlockingQueue<byte[]> audioQueue = new LinkedBlockingQueue<>();
+        AtomicBoolean isCompleted = new AtomicBoolean(false);
+        AtomicReference<String> finalResult = new AtomicReference<>("");
+        // 识别失败原因短码，成功为 null
+        AtomicReference<String> failureReason = new AtomicReference<>();
+        CountDownLatch recognitionLatch = new CountDownLatch(1);
+        boolean timedOut = false;
+        
+        // 订阅Sink并将数据放入队列
+        audioSink.subscribe(
+            data -> audioQueue.offer(data),
+            error -> {
+                log.error("音频流处理错误", error);
+                isCompleted.set(true);
+            },
+            () -> isCompleted.set(true)
+        );
+
+        // 生成唯一的语音ID
+        String voiceId = UUID.randomUUID().toString();
+
+        try {
+            // 创建腾讯云凭证
+            Credential credential = new Credential(appId, secretId, secretKey);
+
+            // 创建识别请求
+            SpeechRecognizerRequest request = SpeechRecognizerRequest.init();
+            request.setEngineModelType("16k_zh"); // 16k采样率中文模型
+            request.setVoiceFormat(1); // PCM格式
+            request.setVoiceId(voiceId);
+            String hotwordList = toHotwordList(hotwords);
+            if (hotwordList != null) {
+                request.setHotwordList(hotwordList);
+            }
+
+            // 创建识别监听器
+            SpeechRecognizerListener listener = new SpeechRecognizerListener() {
+                private final StringBuilder textBuilder = new StringBuilder();
+
+                /** 旁路通知中间结果，异常不得影响识别主流程 */
+                private void notifyPartial(String text) {
+                    try {
+                        onPartialText.accept(text);
+                    } catch (Exception e) {
+                        log.debug("中间识别结果回调异常 - VoiceId: {}", voiceId, e);
+                    }
+                }
+
+                @Override
+                public void onRecognitionStart(SpeechRecognizerResponse response) {
+                    log.debug("腾讯云识别开始 - VoiceId: {}", voiceId);
+                }
+
+                @Override
+                public void onSentenceBegin(SpeechRecognizerResponse response) {
+                    // 句子开始，可以不处理
+                }
+
+                @Override
+                public void onRecognitionResultChange(SpeechRecognizerResponse response) {
+                    // 非稳态结果，可能会变化
+                    if (response.getResult() != null && response.getResult().getVoiceTextStr() != null) {
+                        String text = response.getResult().getVoiceTextStr();
+                        if (!text.isEmpty()) {
+                            // 更新当前识别结果
+                            synchronized (textBuilder) {
+                                textBuilder.setLength(0);
+                                textBuilder.append(text);
+                            }
+                            notifyPartial(text);
+                        }
+                    }
+                }
+
+                @Override
+                public void onSentenceEnd(SpeechRecognizerResponse response) {
+                    // 稳态结果，不再变化
+                    if (response.getResult() != null && response.getResult().getVoiceTextStr() != null) {
+                        String text = response.getResult().getVoiceTextStr();
+                        if (!text.isEmpty()) {
+                            // 更新最终结果
+                            synchronized (textBuilder) {
+                                textBuilder.setLength(0);
+                                textBuilder.append(text);
+                            }
+                            finalResult.set(text);
+                            notifyPartial(text);
+                        }
+                    }
+                }
+
+                @Override
+                public void onRecognitionComplete(SpeechRecognizerResponse response) {
+                    // 识别完成，获取最终结果
+                    if (response.getResult() != null && response.getResult().getVoiceTextStr() != null) {
+                        String text = response.getResult().getVoiceTextStr();
+                        if (!text.isEmpty()) {
+                            finalResult.set(text);
+                        } else {
+                            // 如果最终结果为空，使用之前积累的结果
+                            synchronized (textBuilder) {
+                                if (textBuilder.length() > 0) {
+                                    finalResult.set(textBuilder.toString());
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 释放锁，表示识别完成
+                    recognitionLatch.countDown();
+                    
+                    // 从活跃识别器中移除
+                    activeRecognizers.remove(voiceId);
+                }
+
+                @Override
+                public void onFail(SpeechRecognizerResponse response) {
+                    log.error("识别失败 - VoiceId: {}, 错误: {}", voiceId,
+                            response.getMessage() != null ? response.getMessage() : "未知错误");
+                    failureReason.set(SttResult.FAILURE_UPSTREAM_ERROR);
+
+                    // 释放锁，表示识别失败
+                    recognitionLatch.countDown();
+                    
+                    // 从活跃识别器中移除
+                    activeRecognizers.remove(voiceId);
+                }
+
+                @Override
+                public void onMessage(SpeechRecognizerResponse response) {
+                    // 可以记录所有消息，但不需要特别处理
+                }
+            };
+
+            // 创建识别器
+            SpeechRecognizer recognizer = new SpeechRecognizer(speechClient, credential, request, listener);
+
+            // 存储到活跃识别器映射中
+            activeRecognizers.put(voiceId, recognizer);
+
+            // 启动识别器
+            recognizer.start();
+
+            // 标记是否已经发送了停止信号
+            AtomicBoolean stopSent = new AtomicBoolean(false);
+
+            // 启动虚拟线程发送音频数据
+            Thread.startVirtualThread(() -> {
+                try {
+                    long idleMs = 0;
+                    while (!isCompleted.get() || !audioQueue.isEmpty()) {
+                        byte[] audioChunk = null;
+                        try {
+                            audioChunk = audioQueue.poll(QUEUE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                        } catch (InterruptedException e) {
+                            log.warn("音频数据队列等待被中断", e);
+                            Thread.currentThread().interrupt(); // 重新设置中断标志
+                            break;
+                        }
+
+                        if (audioChunk == null) {
+                            idleMs += QUEUE_TIMEOUT_MS;
+                            // 上游未按预期终结音频流时的兜底，避免线程与识别器一直挂着
+                            if (idleMs >= IDLE_TIMEOUT_MS) {
+                                log.warn("音频流长时间无数据，主动结束识别 - VoiceId: {}", voiceId);
+                                break;
+                            }
+                            continue;
+                        }
+                        idleMs = 0;
+                        if (!activeRecognizers.containsKey(voiceId)) {
+                            break;
+                        }
+                        try {
+                            recognizer.write(audioChunk);
+                        } catch (Exception e) {
+                            log.error("发送音频数据时发生错误 - VoiceId: {}", voiceId, e);
+                            break;
+                        }
+                    }
+                    
+                    // 发送停止信号
+                    if (activeRecognizers.containsKey(voiceId) && !stopSent.getAndSet(true)) {
+                        try {
+                            recognizer.stop();
+                        } catch (Exception e) {
+                            log.error("停止识别器时发生错误 - VoiceId: {}", voiceId, e);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("处理音频流时发生错误 - VoiceId: {}", voiceId, e);
+                }
+            });
+
+            // 等待识别完成或超时
+            boolean recognized = recognitionLatch.await(RECOGNITION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            
+            if (!recognized) {
+                // 等到超时且一个字都没识别出来时是失败，不能当成"用户没说话"
+                log.warn("腾讯云识别超时 - VoiceId: {}", voiceId);
+                timedOut = true;
+                // 超时后清理资源
+                if (activeRecognizers.containsKey(voiceId)) {
+                    try {
+                        recognizer.stop();
+                        recognizer.close();
+                        activeRecognizers.remove(voiceId);
+                    } catch (Exception e) {
+                        log.error("清理超时识别器资源时发生错误 - VoiceId: {}", voiceId, e);
+                    }
+                }
+            } else {
+                // 正常完成后也关闭recognizer释放资源
+                try {
+                    recognizer.close();
+                } catch (Exception e) {
+                    log.error("关闭识别器时发生错误 - VoiceId: {}", voiceId, e);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("创建语音识别会话时发生错误", e);
+            failureReason.set(SttResult.FAILURE_UPSTREAM_ERROR);
+            // recognizer.start() 抛异常前它可能已经放进了 activeRecognizers，不清理会永久占位
+            activeRecognizers.remove(voiceId);
+        }
+
+        SttResult result = SttResult.textOnly(finalResult.get()).withFailure(failureReason.get());
+        return timedOut ? result.withFailureIfEmpty(SttResult.FAILURE_TIMEOUT) : result;
+    }
+
+    /**
+     * 转成腾讯的临时热词表：{@code 词|权重} 用英文逗号分隔，最多 128 个。
+     * 词里含逗号或竖线会破坏这个格式，直接跳过；一个都没有时返回 null，不设该参数。
+     */
+    private static String toHotwordList(List<Hotword> hotwords) {
+        String list = Hotword.limit(hotwords, MAX_HOTWORDS).stream()
+                .filter(h -> h.text().indexOf(',') < 0 && h.text().indexOf('|') < 0)
+                .map(h -> h.text() + "|" + h.weight())
+                .collect(Collectors.joining(","));
+        return list.isEmpty() ? null : list;
+    }
+
+    // 在服务关闭时释放资源
+    public void shutdown() {
+        // 关闭所有活跃的识别器
+        activeRecognizers.forEach((id, recognizer) -> {
+            try {
+                recognizer.stop();
+                recognizer.close();
+            } catch (Exception e) {
+                log.error("关闭识别器时发生错误 - VoiceId: {}", id, e);
+            }
+        });
+        activeRecognizers.clear();
+
+        // 关闭SpeechClient
+        speechClient.shutdown();
+    }
+
+}

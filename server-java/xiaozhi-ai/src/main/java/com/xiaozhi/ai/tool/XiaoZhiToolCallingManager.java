@@ -1,0 +1,642 @@
+package com.xiaozhi.ai.tool;
+
+import com.xiaozhi.ai.tool.session.ToolSession;
+import com.xiaozhi.ai.tool.session.ToolSessionProvider;
+import com.xiaozhi.event.ToolCallCompletedEvent;
+import com.xiaozhi.utils.DateUtils;
+
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
+import org.springframework.ai.tool.execution.ToolExecutionException;
+import org.springframework.ai.tool.execution.ToolExecutionExceptionProcessor;
+import org.springframework.ai.tool.observation.DefaultToolCallingObservationConvention;
+import org.springframework.ai.tool.observation.ToolCallingObservationContext;
+import org.springframework.ai.tool.observation.ToolCallingObservationConvention;
+import org.springframework.ai.tool.observation.ToolCallingObservationDocumentation;
+import org.springframework.ai.tool.resolution.DelegatingToolCallbackResolver;
+import org.springframework.ai.tool.resolution.ToolCallbackResolver;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+
+import lombok.extern.slf4j.Slf4j;
+/**
+ * 自定义的工具调用管理器，用于处理工具调用和执行。
+ * 基于Spring AI的DefaultToolCallingManager，增加了自定义的监控和元数据处理功能。
+ * <p>
+ * 包含对流式工具调用分片合并的修复（Spring AI issue #4629, #4790）。
+ * 该问题在 Spring AI 1.1.4 中仍未修复，mergeToolCalls 方法作为必要的修复保留。
+ * <p>
+ * 同时承担工具调用的递归深度护栏：ChatModel 的 tool loop 是无上限自递归，
+ * 本类是 OpenAI / Ollama / 智谱三条 provider 的公共挂载点。
+ * 边界：{@code XingHuoChatModel} 与 {@code XingChenChatModel} 用的是 Spring AI 默认
+ * ToolCallingManager，不经过本护栏，但它们执行完工具直接返回、不递归，不会无界循环。
+ * <p>
+ * TODO: [Spring AI 升级追踪] 持续关注后续版本是否修复分片问题，届时可移除 mergeToolCalls 方法。
+ */
+@Slf4j
+public class XiaoZhiToolCallingManager implements ToolCallingManager, ApplicationContextAware {
+
+    private ApplicationContext applicationContext;
+
+    // @formatter:off
+
+    private static final ObservationRegistry DEFAULT_OBSERVATION_REGISTRY
+            = ObservationRegistry.NOOP;
+
+    private static final ToolCallingObservationConvention DEFAULT_OBSERVATION_CONVENTION
+            = new DefaultToolCallingObservationConvention();
+
+    private static final ToolCallbackResolver DEFAULT_TOOL_CALLBACK_RESOLVER
+            = new DelegatingToolCallbackResolver(List.of());
+
+    private static final ToolExecutionExceptionProcessor DEFAULT_TOOL_EXECUTION_EXCEPTION_PROCESSOR
+            = DefaultToolExecutionExceptionProcessor.builder().build();
+
+    // @formatter:on
+
+    /** 单轮对话内工具调用的递归层数上限，达到后不再向模型提供工具 */
+    private static final int MAX_TOOL_CALL_DEPTH = 5;
+
+    /**
+     * 单次工具执行的等待上限。工具自身的超时（设备 MCP 30s、远端 MCP 60s）应当先于它触发，
+     * 这里只兜住「工具压根不返回」的情况，保证调用线程一定能被释放。
+     */
+    private static final Duration TOOL_CALL_TIMEOUT = Duration.ofSeconds(120);
+
+    /** 全进程同时在执行的工具数上限，防止工具阻塞时压垮设备通道与数据库连接池 */
+    private static final int MAX_CONCURRENT_TOOL_CALLS = 128;
+
+    /**
+     * 工具执行专用执行器。
+     * <p>
+     * 工具调用是同步阻塞的，直接在调用线程（Reactor 的 boundedElastic，与 TTS 播放共用）
+     * 上执行会把整个池占满，必须挪到这里的虚拟线程上跑，并由调用侧按 {@link #TOOL_CALL_TIMEOUT} 设上限。
+     */
+    private static final ExecutorService TOOL_CALL_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+
+    private static final Semaphore TOOL_CALL_PERMITS = new Semaphore(MAX_CONCURRENT_TOOL_CALLS);
+
+    /** 达到递归上限时追加到对话历史末尾的收尾指令 */
+    static final String TOOL_DEPTH_LIMIT_INSTRUCTION =
+            "工具调用已达本轮上限，不要再调用任何工具。请根据已有的工具结果直接用自然语言回答用户；"
+                    + "信息不足就如实告诉用户当前无法完成，并给出下一步建议。";
+
+    private final ObservationRegistry observationRegistry;
+
+    private final ToolCallbackResolver toolCallbackResolver;
+
+    private final ToolExecutionExceptionProcessor toolExecutionExceptionProcessor;
+
+    private ToolCallingObservationConvention observationConvention = DEFAULT_OBSERVATION_CONVENTION;
+
+    public XiaoZhiToolCallingManager(ObservationRegistry observationRegistry, ToolCallbackResolver toolCallbackResolver,
+                                     ToolExecutionExceptionProcessor toolExecutionExceptionProcessor) {
+        Assert.notNull(observationRegistry, "observationRegistry cannot be null");
+        Assert.notNull(toolCallbackResolver, "toolCallbackResolver cannot be null");
+        Assert.notNull(toolExecutionExceptionProcessor, "toolCallExceptionConverter cannot be null");
+
+        this.observationRegistry = observationRegistry;
+        this.toolCallbackResolver = toolCallbackResolver;
+        this.toolExecutionExceptionProcessor = toolExecutionExceptionProcessor;
+    }
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+        registerConcurrencyGauge(applicationContext);
+    }
+
+    /**
+     * 暴露当前并发执行的工具调用数（TOOL_CALL_PERMITS 已占用的许可数），
+     * 用于观察设备 MCP 等同步阻塞工具是否逼近 MAX_CONCURRENT_TOOL_CALLS 上限。
+     */
+    private static void registerConcurrencyGauge(ApplicationContext applicationContext) {
+        try {
+            MeterRegistry meterRegistry = applicationContext.getBean(MeterRegistry.class);
+            Gauge.builder("xiaozhi.tool.execution.active", TOOL_CALL_PERMITS,
+                            permits -> MAX_CONCURRENT_TOOL_CALLS - permits.availablePermits())
+                    .description("Tool calls currently executing (permits held out of the concurrency cap)")
+                    .register(meterRegistry);
+        } catch (Exception e) {
+            log.debug("注册工具调用并发数指标失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 获取 ToolSessionProvider
+     */
+    private ToolSessionProvider sessionProvider() {
+        if (applicationContext != null) {
+            try {
+                return applicationContext.getBean(ToolSessionProvider.class);
+            } catch (Exception e) {
+                log.debug("无法获取ToolSessionProvider: {}", e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从 toolContext 取出发起本次工具调用时的对话轮次时间戳。
+     */
+    private static Long turnIdOf(ToolContext toolContext) {
+        return toolContext.getContext().get("conversationTimestamp") instanceof Long id ? id : null;
+    }
+
+    /**
+     * 发布工具调用事件
+     */
+    private void publishToolEvent(String sessionId, String toolName, String arguments,
+                                          String result, boolean success, long startNanos) {
+        if (applicationContext == null) {
+            return;
+        }
+        try {
+            long durationMs = DateUtils.elapsedMillis(startNanos);
+            applicationContext.publishEvent(new ToolCallCompletedEvent(
+                    XiaoZhiToolCallingManager.class, sessionId, toolName, arguments, result, success, durationMs));
+        } catch (Exception e) {
+            log.debug("发布工具调用事件失败: {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
+        Assert.notNull(chatOptions, "chatOptions cannot be null");
+
+        List<ToolCallback> toolCallbacks = new ArrayList<>(chatOptions.getToolCallbacks());
+        for (String toolName : chatOptions.getToolNames()) {
+            // Skip the tool if it is already present in the request toolCallbacks.
+            // That might happen if a tool is defined in the options
+            // both as a ToolCallback and as a tool name.
+            if (chatOptions.getToolCallbacks()
+                    .stream()
+                    .anyMatch(tool -> tool.getToolDefinition().name().equals(toolName))) {
+                continue;
+            }
+            ToolCallback toolCallback = this.toolCallbackResolver.resolve(toolName);
+            if (toolCallback == null) {
+                throw new IllegalStateException("No ToolCallback found for tool name: " + toolName);
+            }
+            toolCallbacks.add(toolCallback);
+        }
+
+        return toolCallbacks.stream().map(ToolCallback::getToolDefinition).toList();
+    }
+
+    @Override
+    public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+        Assert.notNull(prompt, "prompt cannot be null");
+        Assert.notNull(chatResponse, "chatResponse cannot be null");
+
+        Optional<Generation> toolCallGeneration = chatResponse.getResults()
+                .stream()
+                .filter(g -> !CollectionUtils.isEmpty(g.getOutput().getToolCalls()))
+                .findFirst();
+
+        if (toolCallGeneration.isEmpty()) {
+            throw new IllegalStateException("No tool call requested by the chat model");
+        }
+
+        AssistantMessage originalAssistantMessage = toolCallGeneration.get().getOutput();
+
+        // 修复流式分片导致的 ToolCall 拆分问题
+        List<AssistantMessage.ToolCall> mergedToolCalls = mergeToolCalls(originalAssistantMessage.getToolCalls());
+        AssistantMessage assistantMessage = (mergedToolCalls == originalAssistantMessage.getToolCalls())
+                ? originalAssistantMessage
+                : AssistantMessage.builder()
+                    .content(originalAssistantMessage.getText())
+                    .properties(originalAssistantMessage.getMetadata())
+                    .toolCalls(mergedToolCalls)
+                    .build();
+
+        ToolContext toolContext = buildToolContext(prompt, assistantMessage);
+
+        XiaoZhiToolCallingManager.ToolExecResult toolExecResult = executeToolCall(prompt, assistantMessage,
+                toolContext);
+
+        // 将中间消息（模型的 tool_call 请求 + 工具执行结果）存入 ToolSession，供 Persona 注入 Conversation
+        String sessionId = toolContext.getContext().get("sessionId") instanceof String s ? s : null;
+        if (sessionId != null) {
+            ToolSessionProvider provider = sessionProvider();
+            if (provider != null) {
+                ToolSession toolSession = provider.getSession(sessionId);
+                if (toolSession != null) {
+                    toolSession.addToolCallMessages(turnIdOf(toolContext), assistantMessage,
+                            toolExecResult.toolResponseMessage());
+                }
+            }
+        }
+
+        List<Message> conversationHistory = buildPostToolHistory(prompt.getInstructions(),
+                assistantMessage, toolExecResult.toolResponseMessage());
+
+        // returnDirect 的结果直接返回给用户、不再回模型，护栏无从生效，且末尾必须留着工具结果消息
+        if (!toolExecResult.returnDirect() && toolCallDepth(prompt.getInstructions()) >= MAX_TOOL_CALL_DEPTH) {
+            log.warn("工具调用递归已达上限 {} 层，本轮不再提供工具", MAX_TOOL_CALL_DEPTH);
+            disableFurtherToolCalls(prompt);
+            conversationHistory.add(new SystemMessage(TOOL_DEPTH_LIMIT_INSTRUCTION));
+        }
+
+        return ToolExecutionResult.builder()
+                .conversationHistory(conversationHistory)
+                .returnDirect(toolExecResult.returnDirect())
+                .build();
+    }
+
+    /**
+     * 本轮已递归的层数：最后一条 UserMessage 之后的 ToolResponseMessage 条数。
+     * ChatModel 每递归一层就往对话历史追加一条工具结果消息；更早轮次的工具链在上一条
+     * UserMessage 之前，不计入本轮。RAG 注入的伪造工具链在用户消息之后，会占用一层额度。
+     */
+    private static int toolCallDepth(List<Message> messages) {
+        int depth = 0;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (message instanceof UserMessage) {
+                break;
+            }
+            if (message instanceof ToolResponseMessage) {
+                depth++;
+            }
+        }
+        return depth;
+    }
+
+    /**
+     * 清空本次请求可用的工具。ChatModel 每轮都从 options 重新解析工具定义，清空后下一轮即无工具可调；
+     * options 由 Persona 每轮对话新建，清空不会跨会话残留。
+     */
+    private static void disableFurtherToolCalls(Prompt prompt) {
+        if (prompt.getOptions() instanceof ToolCallingChatOptions toolCallingChatOptions) {
+            toolCallingChatOptions.setToolCallbacks(List.of());
+            toolCallingChatOptions.setToolNames(Set.of());
+        }
+    }
+
+    private static ToolContext buildToolContext(Prompt prompt, AssistantMessage assistantMessage) {
+        Map<String, Object> toolContextMap = Map.of();
+
+        if (prompt.getOptions() instanceof ToolCallingChatOptions toolCallingChatOptions
+                && !CollectionUtils.isEmpty(toolCallingChatOptions.getToolContext())) {
+            toolContextMap = new HashMap<>(toolCallingChatOptions.getToolContext());
+
+            toolContextMap.put(ToolContext.TOOL_CALL_HISTORY,
+                    buildPreToolHistory(prompt, assistantMessage));
+        }
+
+        return new ToolContext(toolContextMap);
+    }
+
+    private static List<Message> buildPreToolHistory(Prompt prompt,
+                                                                             AssistantMessage assistantMessage) {
+        List<Message> messageHistory = new ArrayList<>(prompt.copy().getInstructions());
+
+        // 确保工具调用消息包含正确的元数据
+        if (!CollectionUtils.isEmpty(assistantMessage.getToolCalls())) {
+            Map<String, Object> metadata = new HashMap<>(assistantMessage.getMetadata());
+            String toolName = assistantMessage.getToolCalls().get(0).name();
+            metadata.put("toolName", toolName);
+            AssistantMessage updatedAssistantMessage = AssistantMessage.builder()
+                    .content(assistantMessage.getText())
+                    .properties(metadata)
+                    .toolCalls(assistantMessage.getToolCalls())
+                    .build();
+            messageHistory.add(updatedAssistantMessage);
+        } else {
+            messageHistory.add(AssistantMessage.builder()
+                    .content(assistantMessage.getText())
+                    .properties(assistantMessage.getMetadata())
+                    .toolCalls(assistantMessage.getToolCalls())
+                    .build());
+        }
+
+        return messageHistory;
+    }
+
+    /**
+     * 合并流式响应中被拆分的工具调用（Spring AI issue #4629, #4790，1.1.4 仍未修复）。
+     * <p>
+     * 部分 OpenAI 兼容 API（千问、阿里云等）在流式返回 tool call 时，续传 chunk 的 id 为空字符串 "" 而非 null，
+     * 导致 OpenAiStreamFunctionCallingHelper.merge() 将同一个 tool call 的 name 和 arguments 拆成多条记录。
+     * <p>
+     * 已观测到的分片模式（同一 id 被拆成两条）：
+     * <pre>
+     *   分片[0]: id='call_xxx', name='get_device_status', arguments=''
+     *   分片[1]: id='call_xxx', name='',                  arguments='{}'
+     * </pre>
+     * <p>
+     * 合并策略：
+     * - 相同 id 的条目属于同一个 tool call，合并 name 和 arguments
+     * - id 为空且 name 为空的条目视为续传片段，合并到紧邻的上一个 tool call
+     * - 合并后仍缺少 name 的条目会被 warn 并跳过（arguments 允许为空，部分工具不需要参数）
+     */
+    private static List<AssistantMessage.ToolCall> mergeToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.size() <= 1) {
+            return toolCalls;
+        }
+
+        // 快速检查：如果所有条目都有 name，说明没有分片问题，直接返回
+        boolean hasFragment = toolCalls.stream()
+                .anyMatch(tc -> !StringUtils.hasText(tc.name()));
+        if (!hasFragment) {
+            return toolCalls;
+        }
+
+        List<AssistantMessage.ToolCall> merged = new ArrayList<>();
+        String currentId = null;
+        String currentType = null;
+        String currentName = null;
+        StringBuilder currentArgs = null;
+
+        for (AssistantMessage.ToolCall tc : toolCalls) {
+            // 判断是否为续传：同一 id 或无 id 无 name 的孤立片段
+            boolean isContinuation = currentId != null
+                    && ((!StringUtils.hasText(tc.id()) && !StringUtils.hasText(tc.name()))
+                        || (StringUtils.hasText(tc.id()) && tc.id().equals(currentId)));
+
+            if (isContinuation) {
+                // 续传片段：合并到当前 tool call
+                if (StringUtils.hasText(tc.name()) && !StringUtils.hasText(currentName)) {
+                    currentName = tc.name();
+                }
+                if (tc.arguments() != null && !tc.arguments().isEmpty()) {
+                    currentArgs.append(tc.arguments());
+                }
+            } else {
+                // 新的 tool call：先输出上一个
+                if (currentName != null) {
+                    merged.add(new AssistantMessage.ToolCall(currentId, currentType, currentName, currentArgs.toString()));
+                }
+                currentId = StringUtils.hasText(tc.id()) ? tc.id() : "";
+                currentType = StringUtils.hasText(tc.type()) ? tc.type() : "function";
+                currentName = StringUtils.hasText(tc.name()) ? tc.name() : null;
+                currentArgs = new StringBuilder(tc.arguments() != null ? tc.arguments() : "");
+            }
+        }
+        // 输出最后一个
+        if (currentName != null) {
+            merged.add(new AssistantMessage.ToolCall(currentId, currentType, currentName, currentArgs.toString()));
+        }
+
+        // 验证：只拦截缺 name 的，arguments 允许为空（部分工具不需要参数）
+        List<AssistantMessage.ToolCall> valid = new ArrayList<>();
+        for (AssistantMessage.ToolCall tc : merged) {
+            if (!StringUtils.hasText(tc.name())) {
+                log.warn("工具调用合并后仍缺少 name，跳过: id={}, arguments={}", tc.id(), tc.arguments());
+            } else {
+                valid.add(tc);
+            }
+        }
+
+        if (valid.size() != toolCalls.size()) {
+            log.warn("工具调用分片合并触发: {} 条 → {} 条",
+                    toolCalls.size(), valid.size());
+        }
+        return valid;
+    }
+
+    /**
+     * Execute the tool call and return the response message.
+     */
+    private XiaoZhiToolCallingManager.ToolExecResult executeToolCall(Prompt prompt, AssistantMessage assistantMessage,
+                                                                                  ToolContext toolContext) {
+        List<ToolCallback> toolCallbacks = List.of();
+        if (prompt.getOptions() instanceof ToolCallingChatOptions toolCallingChatOptions) {
+            toolCallbacks = toolCallingChatOptions.getToolCallbacks();
+        }
+
+        List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
+
+        Boolean returnDirect = null;
+
+        for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+
+            String toolName = toolCall.name();
+            String toolInputArguments = toolCall.arguments();
+
+            ToolCallback toolCallback = toolCallbacks.stream()
+                    .filter(tool -> toolName.equals(tool.getToolDefinition().name()))
+                    .findFirst()
+                    .orElseGet(() -> this.toolCallbackResolver.resolve(toolName));
+
+            if (toolCallback == null) {
+                // 模型幻觉调用了未注册的工具，返回错误结果让模型自行总结回复，而不是崩掉整个流
+                log.error("模型调用了未注册的工具: {}", toolName);
+                toolResponses.add(new ToolResponseMessage.ToolResponse(
+                        toolCall.id(), toolName,
+                        "工具 '" + toolName + "' 不存在或未注册，请告知用户该功能当前不可用。"));
+                continue;
+            }
+
+            if (returnDirect == null) {
+                returnDirect = toolCallback.getToolMetadata().returnDirect();
+            }
+            else {
+                returnDirect = returnDirect && toolCallback.getToolMetadata().returnDirect();
+            }
+
+            ToolCallingObservationContext observationContext = ToolCallingObservationContext.builder()
+                    .toolDefinition(toolCallback.getToolDefinition())
+                    .toolMetadata(toolCallback.getToolMetadata())
+                    .toolCallArguments(toolInputArguments)
+                    .build();
+            // 通过 sessionId 获取 ToolSession（Persona 只传 sessionId 避免序列化问题）
+            String sessionId = toolContext.getContext().get("sessionId") instanceof String s ? s : null;
+            ToolSession toolSession = null;
+            if (sessionId != null) {
+                toolSession = sessionProvider() != null ? sessionProvider().getSession(sessionId) : null;
+                observationContext.put("sessionId", sessionId);
+            }
+
+            // 记录工具调用开始时间
+            final long[] startTimeRef = new long[]{System.nanoTime()};
+            final boolean[] successRef = new boolean[]{true};
+
+            String toolCallResult = ToolCallingObservationDocumentation.TOOL_CALL
+                    .observation(this.observationConvention, DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
+                            this.observationRegistry)
+                    .observe(() -> {
+                        String toolResult;
+                        try {
+                            toolResult = callWithTimeout(toolCallback, toolInputArguments, toolContext);
+                        }
+                        catch (ToolExecutionException ex) {
+                            log.error("Tool execution exception: ", ex);
+                            toolResult = this.toolExecutionExceptionProcessor.process(ex);
+                            log.debug("Processed tool execution exception result: {}", toolResult);
+                            successRef[0] = false;
+                        }
+                        catch (ToolCallTimeoutException ex) {
+                            log.error("工具执行超时: toolName={}, 上限={}s", toolName, TOOL_CALL_TIMEOUT.toSeconds());
+                            toolResult = ex.getMessage();
+                            successRef[0] = false;
+                        }
+                        catch (Exception ex) {
+                            log.error("Unexpected exception during tool execution: ", ex);
+                            toolResult = "Error executing tool: " + ex.getMessage();
+                            successRef[0] = false;
+                        }
+                        observationContext.setToolCallResult(toolResult);
+
+                        return toolResult;
+                    });
+
+            // 记录工具调用详情到session。打断不会中断已在执行的工具，
+            // 故带上发起时的轮次代次，由 session 侧判断是否已过期。
+            if (toolSession != null) {
+                toolSession.addToolCallDetail(turnIdOf(toolContext), toolName,
+                        toolInputArguments, toolCallResult);
+            }
+
+            // 发布工具调用事件
+            publishToolEvent(sessionId, toolName, toolInputArguments, toolCallResult,
+                    successRef[0], startTimeRef[0]);
+
+            toolResponses.add(new ToolResponseMessage.ToolResponse(toolCall.id(), toolName,
+                    toolCallResult != null ? toolCallResult : ""));
+        }
+
+        return new XiaoZhiToolCallingManager.ToolExecResult(ToolResponseMessage.builder().responses(toolResponses).build(),
+                returnDirect != null && returnDirect);
+    }
+
+    /**
+     * 在专用虚拟线程上执行工具，最长等待 {@link #TOOL_CALL_TIMEOUT}。
+     * 超时抛 {@link ToolCallTimeoutException} 并中断执行线程；工具自身抛出的异常原样透出，交由调用侧原有分支处理。
+     */
+    private String callWithTimeout(ToolCallback toolCallback, String toolInputArguments, ToolContext toolContext) {
+        Future<String> future = TOOL_CALL_EXECUTOR.submit(() -> {
+            TOOL_CALL_PERMITS.acquire();
+            try {
+                return toolCallback.call(toolInputArguments, toolContext);
+            }
+            finally {
+                TOOL_CALL_PERMITS.release();
+            }
+        });
+        try {
+            return future.get(TOOL_CALL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        }
+        catch (TimeoutException e) {
+            future.cancel(true);
+            throw new ToolCallTimeoutException("工具 '" + toolCallback.getToolDefinition().name() + "' 执行超过 "
+                    + TOOL_CALL_TIMEOUT.toSeconds() + " 秒仍未返回，请告知用户这次没能完成，可稍后重试。");
+        }
+        catch (InterruptedException e) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待工具执行时线程被中断", e);
+        }
+        catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IllegalStateException(cause != null ? cause.getMessage() : e.getMessage(), cause);
+        }
+    }
+
+    /** 工具执行超过 {@link #TOOL_CALL_TIMEOUT} 未返回。 */
+    private static final class ToolCallTimeoutException extends RuntimeException {
+
+        private ToolCallTimeoutException(String message) {
+            super(message);
+        }
+    }
+
+    private List<Message> buildPostToolHistory(List<Message> previousMessages,
+                                                                     AssistantMessage assistantMessage, ToolResponseMessage toolResponseMessage) {
+        List<Message> messages = new ArrayList<>(previousMessages);
+
+        // 确保工具调用消息包含正确的元数据
+        if (!CollectionUtils.isEmpty(assistantMessage.getToolCalls())) {
+            Map<String, Object> metadata = new HashMap<>(assistantMessage.getMetadata());
+            String toolName = assistantMessage.getToolCalls().get(0).name();
+            metadata.put("toolName", toolName);
+            AssistantMessage updatedAssistantMessage = AssistantMessage.builder()
+                    .content(assistantMessage.getText())
+                    .properties(metadata)
+                    .toolCalls(assistantMessage.getToolCalls())
+                    .build();
+            messages.add(updatedAssistantMessage);
+        } else {
+            messages.add(assistantMessage);
+        }
+
+        messages.add(toolResponseMessage);
+        return messages;
+    }
+
+    public void setObservationConvention(ToolCallingObservationConvention observationConvention) {
+        this.observationConvention = observationConvention;
+    }
+
+    public static XiaoZhiToolCallingManager.Builder builder() {
+        return new XiaoZhiToolCallingManager.Builder();
+    }
+
+    private record ToolExecResult(ToolResponseMessage toolResponseMessage, boolean returnDirect) {
+    }
+
+    public final static class Builder {
+
+        private ObservationRegistry observationRegistry = DEFAULT_OBSERVATION_REGISTRY;
+
+        private ToolCallbackResolver toolCallbackResolver = DEFAULT_TOOL_CALLBACK_RESOLVER;
+
+        private ToolExecutionExceptionProcessor toolExecutionExceptionProcessor = DEFAULT_TOOL_EXECUTION_EXCEPTION_PROCESSOR;
+
+        private Builder() {
+        }
+
+        public XiaoZhiToolCallingManager.Builder observationRegistry(ObservationRegistry observationRegistry) {
+            this.observationRegistry = observationRegistry;
+            return this;
+        }
+
+        public XiaoZhiToolCallingManager.Builder toolCallbackResolver(ToolCallbackResolver toolCallbackResolver) {
+            this.toolCallbackResolver = toolCallbackResolver;
+            return this;
+        }
+
+        public XiaoZhiToolCallingManager.Builder toolExecutionExceptionProcessor(
+                ToolExecutionExceptionProcessor toolExecutionExceptionProcessor) {
+            this.toolExecutionExceptionProcessor = toolExecutionExceptionProcessor;
+            return this;
+        }
+
+        public XiaoZhiToolCallingManager build() {
+            return new XiaoZhiToolCallingManager(this.observationRegistry, this.toolCallbackResolver,
+                    this.toolExecutionExceptionProcessor);
+        }
+
+    }
+}

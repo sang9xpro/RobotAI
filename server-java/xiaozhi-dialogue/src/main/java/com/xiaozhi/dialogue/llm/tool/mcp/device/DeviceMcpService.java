@@ -1,0 +1,452 @@
+package com.xiaozhi.dialogue.llm.tool.mcp.device;
+
+import com.xiaozhi.communication.ServerAddressProvider;
+import com.xiaozhi.communication.auth.DeviceAuthService;
+import com.xiaozhi.communication.common.ChatSession;
+import com.xiaozhi.communication.common.SessionManager;
+import com.xiaozhi.communication.domain.DeviceMcpMessage;
+import com.xiaozhi.communication.domain.mcp.device.initialize.DeviceMcpClientInfo;
+import com.xiaozhi.communication.domain.mcp.device.initialize.DeviceMcpInitialize;
+import com.xiaozhi.communication.domain.mcp.device.initialize.DeviceMcpPayload;
+import com.xiaozhi.communication.domain.mcp.device.initialize.DeviceMcpVision;
+import com.xiaozhi.common.port.DeviceWriter;
+import com.xiaozhi.ai.llm.tool.ToolCallStringResultConverter;
+import com.xiaozhi.utils.JsonUtil;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.function.FunctionToolCallback;
+import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Service
+public class DeviceMcpService {
+
+    /** 设备指令等待应答的上限（秒）。拍照识图等合法长指令会用满这个时间 */
+    @Value("${xiaozhi.mcp.device.request-timeout-seconds:30}")
+    private int mcpRequestTimeoutSeconds = 30;
+
+    /**
+     * 同时在等设备应答的指令数上限，0 表示按 CPU 数推算。
+     * <p>
+     * ToolCallback.call() 是同步接口，Spring AI 把工具执行放在公共的 boundedElastic 上，
+     * 因此每等一条指令就占住那个池的一根线程，最长占满 {@code request-timeout-seconds}；
+     * 而 TTS 的流式下行订阅在同一个池上。这里用信号量把占用量卡死，
+     * 超出上限的指令直接告诉模型设备忙，不排队——排队只会把等待时间叠加到对话上。
+     */
+    @Value("${xiaozhi.mcp.device.max-concurrent-requests:0}")
+    private int configuredMaxConcurrentRequests;
+
+    // 先按 CPU 数给一份可用的默认值，@PostConstruct 只在显式配置了上限时替换，
+    // 这样脱离容器直接 new 出来的实例（测试）也有闸门可用
+    private int maxConcurrentRequests = Math.max(4, Runtime.getRuntime().availableProcessors() * 2);
+    private volatile Semaphore inFlightPermits = new Semaphore(maxConcurrentRequests);
+
+    @Resource
+    private ServerAddressProvider serverAddressProvider;
+
+    @Resource
+    private DeviceAuthService deviceAuthService;
+
+    @Resource
+    private DeviceWriter deviceWriter;
+
+    @Resource
+    private SessionManager sessionManager;
+
+    @Value("${xiaozhi.mcp.device.max-tools-count:32}")
+    private int maxToolsCount = 32;
+
+    @PostConstruct
+    void applyConfiguredConcurrencyLimit() {
+        if (configuredMaxConcurrentRequests > 0) {
+            maxConcurrentRequests = configuredMaxConcurrentRequests;
+            inFlightPermits = new Semaphore(maxConcurrentRequests);
+        }
+        log.info("设备指令并发上限 {}, 单条等待上限 {} 秒", maxConcurrentRequests, mcpRequestTimeoutSeconds);
+    }
+
+    /**
+     * 初始化设备端MCP工具列表，并将能力列表持久化到数据库
+     */
+    public void initialize(ChatSession chatSession) {
+        doInitialize(chatSession, null);
+    }
+
+    /**
+     * 初始化设备端MCP工具列表（包含用户工具），并将能力列表持久化到数据库
+     */
+    public void initializeWithUserTools(ChatSession chatSession) {
+        doInitialize(chatSession, true);
+    }
+
+    private void doInitialize(ChatSession chatSession, Boolean withUserTools) {
+        DeviceMcpMessage initResult = sendInitialize(chatSession);
+        if (initResult != null) {
+            chatSession.getDeviceMcpHolder().setMcpInitialized(true);
+        }
+        if (chatSession.getDeviceMcpHolder().isMcpInitialized()) {
+            List<String> toolNames = sendToolsList(chatSession, withUserTools);
+            persistMcpList(chatSession, toolNames);
+        }
+    }
+
+    /**
+     * 服务端主动调用设备 MCP 工具
+     *
+     * @param deviceId 设备ID（设备必须在线）
+     * @param toolName 工具原始名称（如 "screenshot"、"self.reboot"）
+     * @param args     工具参数
+     * @return MCP 响应的 result 字段
+     */
+    public Map<String, Object> callDeviceTool(String deviceId, String toolName, Map<String, Object> args) {
+        ChatSession chatSession = sessionManager.getSessionByDeviceId(deviceId);
+        if (chatSession == null) {
+            throw new IllegalStateException("设备离线或未连接: " + deviceId);
+        }
+
+        DeviceMcpMessage request = new DeviceMcpMessage();
+        request.setSessionId(chatSession.getSessionId());
+        DeviceMcpPayload payload = new DeviceMcpPayload();
+        payload.setMethod("tools/call");
+        payload.setId(chatSession.getDeviceMcpHolder().getMcpRequestId());
+        payload.setParams(Map.of(
+                "name", toolName,
+                "arguments", args != null ? args : Map.of()
+        ));
+        if ("self.robot.action".equals(toolName)) {
+            var bounded = new LinkedHashMap<String, Object>(args != null ? args : Map.of());
+            long now = com.xiaozhi.utils.DateUtils.millis();
+            bounded.put("issued_at_ms", now);
+            bounded.put("expires_at_ms", now + 1000);
+            payload.setParams(Map.of("name", toolName, "arguments", bounded));
+        }
+        request.setPayload(payload);
+
+        DeviceMcpMessage response = sendMcpRequest(chatSession, request);
+        if (response == null) {
+            throw new IllegalStateException("设备响应超时: " + toolName);
+        }
+        if (response.getPayload().getResult() == null) {
+            throw new IllegalStateException("工具调用失败: " + response.getPayload().getError());
+        }
+        return response.getPayload().getResult();
+    }
+
+    /**
+     * 发送初始化命令
+     */
+    protected DeviceMcpMessage sendInitialize(ChatSession chatSession) {
+        DeviceMcpMessage message = new DeviceMcpMessage();
+        message.setSessionId(chatSession.getSessionId());
+        DeviceMcpPayload payload = new DeviceMcpPayload();
+        payload.setId(chatSession.getDeviceMcpHolder().getMcpRequestId());
+        payload.setMethod("initialize");
+        payload.setParams(deviceMcpInitialize(chatSession));
+        message.setPayload(payload);
+
+        DeviceMcpMessage result = sendMcpRequest(chatSession, message);
+        if (result != null) {
+            log.debug("SessionId: {}, MCP initialized successfully", chatSession.getSessionId());
+            return result;
+        }
+        return null;
+    }
+
+    @NotNull
+    private DeviceMcpInitialize deviceMcpInitialize(ChatSession chatSession) {
+        DeviceMcpInitialize initialize = new DeviceMcpInitialize();
+        initialize.setClientInfo(new DeviceMcpClientInfo());
+
+        DeviceMcpVision vision = new DeviceMcpVision();
+        vision.setUrl(serverAddressProvider.getServerAddress() + "/api/vl/chat");
+        String deviceId = chatSession.getDevice() != null ? chatSession.getDevice().getDeviceId() : null;
+        vision.setToken(deviceAuthService.generateVisionToken(chatSession.getSessionId(), deviceId));
+        initialize.setCapabilities(Map.of("vision", vision));
+        return initialize;
+    }
+
+    /**
+     * 发送工具列表请求（支持分页递归）
+     *
+     * @return 本次及后续分页中收集到的所有原始工具名
+     */
+    private List<String> sendToolsList(ChatSession chatSession, Boolean withUserTools) {
+        DeviceMcpMessage message = new DeviceMcpMessage();
+        message.setSessionId(chatSession.getSessionId());
+        DeviceMcpPayload payload = new DeviceMcpPayload();
+        payload.setId(chatSession.getDeviceMcpHolder().getMcpRequestId());
+        payload.setMethod("tools/list");
+        if (withUserTools != null && withUserTools) {
+            payload.setParams(Map.of("withUserTools", true));
+        } else if (chatSession.getDeviceMcpHolder().getMcpCursor() != null) {
+            payload.setParams(Map.of("cursor", chatSession.getDeviceMcpHolder().getMcpCursor()));
+        } else {
+            payload.setParams(Map.of("cursor", ""));
+        }
+        message.setPayload(payload);
+
+        List<String> collectedNames = new ArrayList<>();
+        DeviceMcpMessage result = sendMcpRequest(chatSession, message);
+        if (result == null) {
+            return collectedNames;
+        }
+
+        Map<String, Object> payloadResult = result.getPayload().getResult();
+        if (payloadResult == null) {
+            log.warn("SessionId: {}, MCP tools/list 返回错误应答，跳过本次工具注册: {}",
+                    chatSession.getSessionId(), result.getPayload().getError());
+            return collectedNames;
+        }
+
+        List<Map<String, Object>> tools = (List<Map<String, Object>>) payloadResult.get("tools");
+        Object nextCursor = payloadResult.get("nextCursor");
+        if (tools == null || tools.isEmpty()) {
+            return collectedNames;
+        }
+
+        int toolsCount = chatSession.getToolCallbacks().size();
+        int remaining = maxToolsCount - toolsCount;
+        if (remaining <= 0) {
+            log.warn("SessionId: {}, 工具数已达上限({})，本页 {} 个工具全部丢弃",
+                    chatSession.getSessionId(), maxToolsCount, tools.size());
+            return collectedNames;
+        }
+        // 超出上限时只截断到剩余额度，尽量装下能装的部分，而不是整页丢弃
+        boolean truncated = tools.size() > remaining;
+        if (truncated) {
+            log.warn("SessionId: {}, 工具数超过上限({})，本页仅保留前 {} 个，丢弃 {} 个",
+                    chatSession.getSessionId(), maxToolsCount, remaining, tools.size() - remaining);
+            tools = tools.subList(0, remaining);
+        }
+
+        // 按原名长度倒序构建 original -> sanitized 映射：
+        // 长名先替换能避免短名字是长名字子串时替换错位
+        // （例如 description 里同时存在 self.audio_speaker 和 self.audio_speaker.set_volume）
+        Map<String, String> nameMapping = new LinkedHashMap<>();
+        tools.stream()
+                .map(t -> (String) t.get("name"))
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .forEach(original -> nameMapping.put(original, sanitizeToolName(original)));
+
+        for (Map<String, Object> tool : tools) {
+            final String name = (String) tool.get("name");
+            String funcName = nameMapping.get(name);
+            // 同步替换 description 中出现的原始工具名，避免模型照描述文本输出未注册的原名
+            String funcDescription = sanitizeDescription((String) tool.get("description"), nameMapping);
+            Object inputSchema = tool.get("inputSchema");
+
+            ToolCallback toolCallback = FunctionToolCallback
+                    .builder(funcName, (Map<String, Object> params, ToolContext toolContext) -> {
+                        DeviceMcpMessage req = new DeviceMcpMessage();
+                        req.setSessionId(chatSession.getSessionId());
+                        DeviceMcpPayload reqPayload = new DeviceMcpPayload();
+                        reqPayload.setMethod("tools/call");
+                        reqPayload.setId(chatSession.getDeviceMcpHolder().getMcpRequestId());
+                        var proposal = new LinkedHashMap<String, Object>(params);
+                        if ("self.robot.action".equals(name)) {
+                        long now = com.xiaozhi.utils.DateUtils.millis();
+                            proposal.put("issued_at_ms", now);
+                            proposal.put("expires_at_ms", now + 1000);
+                        }
+                        reqPayload.setParams(Map.of("name", name, "arguments", proposal));
+                        req.setPayload(reqPayload);
+
+                        McpCallResult callOutcome = call(chatSession, req);
+                        if (callOutcome.failed()) {
+                            return callOutcome.failureReason();
+                        }
+                        DeviceMcpMessage resp = callOutcome.response();
+                        log.info("SessionId: {}, MCP function call response: {}", chatSession.getSessionId(), resp);
+                        Map<String, Object> callResult = resp.getPayload().getResult();
+                        if (callResult == null || isError(callResult)) {
+                            return deviceErrorMessage(resp);
+                        }
+                        return callResult.get("content");
+                    })
+                    .toolMetadata(ToolMetadata.builder().returnDirect(false).build())
+                    .description(funcDescription)
+                    .inputSchema(JsonUtil.toJson(inputSchema))
+                    .inputType(Map.class)
+                    .toolCallResultConverter(ToolCallStringResultConverter.INSTANCE)
+                    .build();
+
+            chatSession.getToolsSessionHolder().registerFunction(funcName, toolCallback);
+            collectedNames.add(name);
+        }
+
+        // 本页已经截断到上限，再取下一页也装不下，不必继续翻页
+        if (!truncated && nextCursor != null && !nextCursor.toString().isEmpty()) {
+            chatSession.getDeviceMcpHolder().setMcpCursor(nextCursor.toString());
+            collectedNames.addAll(sendToolsList(chatSession, null));
+        } else {
+            chatSession.getDeviceMcpHolder().setMcpCursor(null);
+        }
+        return collectedNames;
+    }
+
+    private void persistMcpList(ChatSession chatSession, List<String> toolNames) {
+        if (toolNames.isEmpty()) {
+            return;
+        }
+        String deviceId = chatSession.getDevice() != null ? chatSession.getDevice().getDeviceId() : null;
+        if (!StringUtils.hasText(deviceId)) {
+            return;
+        }
+        String mcpList = String.join(",", toolNames);
+        // 与 session 内存中的值比较，相同则跳过，无需查库
+        if (Objects.equals(chatSession.getDevice().getMcpList(), mcpList)) {
+            return;
+        }
+        try {
+            deviceWriter.updateMcpList(deviceId, mcpList);
+            chatSession.getDevice().setMcpList(mcpList);
+            log.info("DeviceId: {}, mcp_list updated: {}", deviceId, mcpList);
+        } catch (Exception e) {
+            log.warn("DeviceId: {}, failed to persist mcp_list", deviceId, e);
+        }
+    }
+
+    /**
+     * 将设备端 MCP 工具名规范化为 OpenAI Function Calling 兼容名称。
+     * <p>
+     * 保留字母、数字、下划线、连字符和中文，其他字符（包括 '.'）替换为 '_'。
+     */
+    static String sanitizeToolName(String rawName) {
+        return rawName.replaceAll("[^a-zA-Z0-9_\\-\\u4e00-\\u9fff]", "_");
+    }
+
+    /**
+     * 将 description 中引用的工具原名替换为 sanitized 名称，
+     * 避免 LLM 按描述里的原名（如 {@code self.get_device_status}）输出导致 resolve 失败。
+     * <p>
+     * 传入的 mapping 应按原名长度倒序，避免短名字是长名字子串时替换错位。
+     */
+    static String sanitizeDescription(String description, Map<String, String> nameMapping) {
+        if (description == null || description.isEmpty() || nameMapping == null || nameMapping.isEmpty()) {
+            return description;
+        }
+        String result = description;
+        for (Map.Entry<String, String> entry : nameMapping.entrySet()) {
+            result = result.replace(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
+    /**
+     * 设备指令的调用结果，失败时 failureReason 是给模型看的说明。
+     */
+    public record McpCallResult(DeviceMcpMessage response, String failureReason) {
+        public boolean failed() {
+            return response == null;
+        }
+    }
+
+    /**
+     * 工具是否执行失败。isError 是可选字段，缺省即成功，不能当成失败。
+     */
+    private static boolean isError(Map<String, Object> callResult) {
+        Object isError = callResult.get("isError");
+        return isError != null && Boolean.parseBoolean(String.valueOf(isError));
+    }
+
+    /**
+     * 设备回报错误时给模型的说明，设备没给出具体原因时用兜底话术。
+     * <p>
+     * 工具执行失败的原因按 MCP 规范放在 result.content，payload.error 只用于协议级错误，两处都要看。
+     */
+    private static String deviceErrorMessage(DeviceMcpMessage response) {
+        String reason = contentText(response.getPayload().getResult());
+        if (!StringUtils.hasText(reason)) {
+            Map<String, Object> error = response.getPayload().getError();
+            Object message = error == null ? null : error.get("message");
+            reason = message == null ? null : message.toString();
+        }
+        if (StringUtils.hasText(reason)) {
+            return "设备执行失败：" + reason;
+        }
+        return "设备执行失败，没有给出具体原因。请告诉用户这次没能完成";
+    }
+
+    /**
+     * 取 result.content 里的文本内容，content 是 {type,text} 的列表，多段用换行拼接。
+     */
+    private static String contentText(Map<String, Object> callResult) {
+        Object content = callResult == null ? null : callResult.get("content");
+        if (content == null) {
+            return null;
+        }
+        if (!(content instanceof List<?> items)) {
+            return content.toString();
+        }
+        return items.stream()
+                .map(item -> item instanceof Map<?, ?> map ? map.get("text") : item)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining("\n"));
+    }
+
+    public DeviceMcpMessage sendMcpRequest(ChatSession chatSession, DeviceMcpMessage mcpMessage) {
+        return call(chatSession, mcpMessage).response();
+    }
+
+    public McpCallResult call(ChatSession chatSession, DeviceMcpMessage mcpMessage) {
+        Long id = mcpMessage.getPayload().getId();
+        // 连接已断就不必等满超时，发送本身不抛异常，等下去只是白等
+        if (!chatSession.isOpen()) {
+            log.warn("SessionId: {}, 连接已关闭，设备指令未下发, id: {}", chatSession.getSessionId(), id);
+            return new McpCallResult(null, "设备连接不可用，指令没有下发成功。请告诉用户设备当前无法控制");
+        }
+        // 池子里已经有足够多的线程在等设备了，再压进来只会挤掉同一个池上的 TTS 下行
+        if (!inFlightPermits.tryAcquire()) {
+            log.warn("SessionId: {}, 并发设备指令已达上限 {}, 本次未下发, id: {}",
+                    chatSession.getSessionId(), maxConcurrentRequests, id);
+            return new McpCallResult(null, "同时执行的设备指令太多，这一条没有下发。请告诉用户稍后再试");
+        }
+        CompletableFuture<DeviceMcpMessage> future = new CompletableFuture<>();
+        Map<Long, CompletableFuture<DeviceMcpMessage>> pendingRequests =
+                chatSession.getDeviceMcpHolder().getMcpPendingRequests();
+        // 先登记再发送，设备秒回时应答才有落点，否则会被丢弃并干等到超时
+        pendingRequests.put(id, future);
+
+        try {
+            chatSession.sendTextMessage(JsonUtil.toJson(mcpMessage));
+            return new McpCallResult(future.get(mcpRequestTimeoutSeconds, TimeUnit.SECONDS), null);
+        } catch (TimeoutException e) {
+            log.warn("SessionId: {}, 设备指令等待超时, id: {}", chatSession.getSessionId(), id);
+            return new McpCallResult(null,
+                    "设备在" + mcpRequestTimeoutSeconds + "秒内没有响应，可能不在线或正忙。可以稍后重试，或者告诉用户这次没能执行");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("SessionId: {}, 设备指令被中断, id: {}", chatSession.getSessionId(), id);
+            return new McpCallResult(null, "本次设备指令被中断，没有执行");
+        } catch (Exception e) {
+            log.error("SessionId: {}, 设备指令下发失败, id: {}", chatSession.getSessionId(), id, e);
+            return new McpCallResult(null, "设备连接不可用，指令没有下发成功。请告诉用户设备当前无法控制");
+        } finally {
+            pendingRequests.remove(id);
+            inFlightPermits.release();
+        }
+    }
+}

@@ -1,0 +1,33 @@
+# ============================================================
+# Dialogue 独立部署配置
+# 与 server 共用的部分见 xiaozhi-common 的 application-common.yml
+# （下面 spring.config.import 引入），本文件只放 dialogue 独有或与
+# server 取值不同的项
+# ============================================================
+
+server:
+  port: 8092
+
+spring:
+  config:
+    import: classpath:application-common.yml
+
+  # Flyway Migration 只在 server 执行，dialogue 不执行，避免多实例重复迁移
+  flyway:
+    enabled: false
+
+  # 数据源配置（与 server 共享同一数据库）
+  datasource:
+    hikari:
+      pool-name: DialogueHikariCP
+
+  # 默认 dev（mvn spring-boot:run、java -jar、bin/*.sh、docker compose 都一样）；
+  # 走生产要显式指定：SPRING_PROFILES_ACTIVE=prod、--spring.profiles.active=prod 或 bin/all.sh start prod
+  profiles:
+    active: dev
+
+# ============================================================
+# Sa-Token（共用字段见 application-common.yml）
+# ============================================================
+sa-token:
+  jwt-secret-key: xiaozhi-esp32-server-java-jwt-secret-key

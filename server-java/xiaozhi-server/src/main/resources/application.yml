@@ -1,0 +1,85 @@
+# ============================================================
+# server 独立配置
+# 与 dialogue 共用的部分见 xiaozhi-common 的 application-common.yml
+# （下面 spring.config.import 引入），本文件只放 server 独有或与
+# dialogue 取值不同的项
+# ============================================================
+
+server:
+  port: 8091
+
+# ============================================================
+# 数据源配置
+# ============================================================
+spring:
+  config:
+    import: classpath:application-common.yml
+
+  datasource:
+    hikari:
+      pool-name: ServerHikariCP
+
+  # Flyway 数据库版本管理
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    encoding: UTF-8
+    validate-on-migrate: false
+
+  # JMX 配置
+  jmx:
+    enabled: false
+
+  # 静态资源配置
+  web:
+    resources:
+      add-mappings: true
+
+  # 默认 dev（mvn spring-boot:run、java -jar、bin/*.sh、docker compose 都一样）；
+  # 走生产要显式指定：SPRING_PROFILES_ACTIVE=prod、--spring.profiles.active=prod 或 bin/all.sh start prod
+  profiles:
+    active: dev
+
+# ============================================================
+# 邮件（注册与找回密码的验证码）
+# 未配置时不发信，接口返回发送失败
+# ============================================================
+email:
+  smtp:
+    username: ${EMAIL_SMTP_USERNAME:}
+    password: ${EMAIL_SMTP_PASSWORD:}
+
+# ============================================================
+# 小智扩展配置
+# ============================================================
+xiaozhi:
+  # 安全用途（限流、封禁、登录审计）的客户端 IP 判定
+  security:
+    # 反向代理的 IP 或 CIDR，逗号分隔或 YAML 列表（如 172.16.0.0/12,10.0.0.0/8）
+    # 留空表示不采信任何 X-Forwarded-For，只认 TCP 对端地址
+    # 前面挂了 Nginx/LB 又不配，所有请求会被算成同一个网关 IP、共用一份限流额度
+    trusted-proxies:
+  communication:
+    # OTA 下发的 WS 二进制帧版本：1=裸Opus，2=带时间戳(服务端AEC需要)，3=带长度头无时间戳
+    websocket-protocol-version: 2
+
+# ============================================================
+# SpringDoc OpenAPI 配置
+# ============================================================
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    url: /v3/api-docs
+
+# ============================================================
+# Sa-Token：JWT 秘钥（使用JWT Simple模式时必须配置，至少32位）
+# 其余共用字段见 application-common.yml
+# ============================================================
+sa-token:
+  jwt-secret-key: ${JWT_SECRET_KEY:xiaozhi-esp32-server-java-jwt-secret-key}
+

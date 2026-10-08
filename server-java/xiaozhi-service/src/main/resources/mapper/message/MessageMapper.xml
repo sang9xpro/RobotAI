@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xiaozhi.message.dal.mysql.mapper.MessageMapper">
+
+    <sql id="Message_Select_Columns">
+        m.messageId,
+        m.deviceId,
+        d.deviceName,
+        m.sender,
+        m.message,
+        m.audioPath,
+        m.state,
+        m.messageType,
+        m.toolCalls,
+        m.sessionId,
+        m.source,
+        m.roleId,
+        r.roleName,
+        m.createTime,
+        m.updateTime
+    </sql>
+
+    <sql id="Message_Query_Where">
+        WHERE m.state = '1'
+        <if test="userId != null">
+            AND m.userId = #{userId}
+        </if>
+        <if test="deviceId != null and deviceId != ''">
+            AND m.deviceId = #{deviceId}
+        </if>
+        <if test="messageType != null and messageType != ''">
+            AND m.messageType = #{messageType}
+        </if>
+        <if test="deviceName != null and deviceName != ''">
+            AND d.deviceName = #{deviceName}
+        </if>
+        <if test="startTime != null">
+            AND m.createTime <![CDATA[ >= ]]> #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND m.createTime <![CDATA[ <= ]]> #{endTime}
+        </if>
+        <if test="sender != null and sender != ''">
+            AND m.sender = #{sender}
+        </if>
+        <if test="roleId != null">
+            AND m.roleId = #{roleId}
+        </if>
+        <if test="sessionId != null and sessionId != ''">
+            AND m.sessionId = #{sessionId}
+        </if>
+        <if test="source != null and source != ''">
+            AND m.source = #{source}
+        </if>
+    </sql>
+
+    <select id="selectPage" resultType="com.xiaozhi.message.model.MessageProjection">
+        SELECT
+        <include refid="Message_Select_Columns"/>
+        FROM sys_message m
+        LEFT JOIN sys_device d ON m.deviceId = d.deviceId
+        LEFT JOIN sys_role r ON m.roleId = r.roleId
+        <include refid="Message_Query_Where"/>
+        ORDER BY m.createTime DESC, m.sender DESC
+    </select>
+</mapper>

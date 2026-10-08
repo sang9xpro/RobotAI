@@ -1,0 +1,305 @@
+package com.xiaozhi.communication.common;
+
+import com.xiaozhi.communication.domain.AudioParams;
+import com.xiaozhi.communication.domain.iot.IotDescriptor;
+import com.xiaozhi.communication.server.websocket.BinaryProtocolCodec;
+import com.xiaozhi.common.model.bo.DeviceBO;
+import com.xiaozhi.common.model.bo.MessageBO;
+import com.xiaozhi.ai.tool.ToolsSessionHolder;
+import com.xiaozhi.dialogue.llm.tool.mcp.device.DeviceMcpHolder;
+import com.xiaozhi.dialogue.runtime.DialogueContext;
+import com.xiaozhi.dialogue.playback.Player;
+import com.xiaozhi.enums.DeviceState;
+import com.xiaozhi.enums.ListenMode;
+import com.xiaozhi.utils.AudioUtils;
+import com.xiaozhi.dialogue.runtime.Persona;
+import com.xiaozhi.dialogue.runtime.SpeechTurn;
+import com.xiaozhi.dialogue.runtime.UserSpeechAudio;
+import com.xiaozhi.utils.DateUtils;
+import lombok.AccessLevel;
+import lombok.Data;
+import lombok.Getter;
+import org.springframework.ai.tool.ToolCallback;
+import reactor.core.publisher.Sinks;
+
+import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Data
+public abstract class ChatSession {
+    /**
+     * 当前会话的sessionId
+     */
+    protected String sessionId;
+    /**
+     * 设备信息
+     */
+    protected DeviceBO device;
+
+    /**
+     * 对话上下文，承载与对话逻辑直接相关的状态（Persona、Player、工具回调等）。
+     * 内部实现细节，外部通过本类的直通方法访问。
+     */
+    private DialogueContext dialogueContext;
+
+    /**
+     * 设备iot信息
+     */
+    protected Map<String, IotDescriptor> iotDescriptors = new ConcurrentHashMap<>();
+
+    /**
+     * 设备服务端状态机。
+     * 替代原有的 playing / musicPlaying / streamingState / inWakeupResponse 分散布尔字段。
+     * IDLE 和 LISTENING 状态允许触发不活跃超时。
+     */
+    private volatile DeviceState deviceState = DeviceState.IDLE;
+
+    /**
+     * 状态转换方法
+     * 包含状态转换验证和日志
+     */
+    public void transitionTo(DeviceState newState) {
+        if (newState == null) {
+            return;
+        }
+        DeviceState oldState = this.deviceState;
+        if (oldState == newState) {
+            return;
+        }
+        this.deviceState = newState;
+        log.debug("状态转换: {} -> {} (SessionId: {})", oldState, newState, sessionId);
+    }
+
+    /**
+     * 设备状态(auto, realTime)
+     */
+    protected ListenMode mode;
+    /**
+     * WebSocket 二进制帧版本(1/2/3)，由设备 hello 声明，收发共用；其他传输忽略。
+     */
+    protected volatile int protocolVersion = BinaryProtocolCodec.VERSION_V1;
+    /**
+     * 设备 hello 声明的音频参数，仅作诊断记录，不改变服务端处理格式。
+     */
+    protected volatile AudioParams deviceAudioParams;
+    /**
+     * 会话的音频数据流。
+     * 保留在 ChatSession 而非 Persona：audioSinks 是 VAD 驱动的音频输入缓冲，
+     * 生命周期跟"用户说话的起止"绑定（生产者是 DialogueService/VAD，消费者是 STT），
+     * 属于传输层关注，与 Persona（AI 能力运行时）生命周期不同。
+     * 移入 Persona 会增加 null 判断复杂度而无收益。
+     */
+    protected volatile Sinks.Many<byte[]> audioSinks;
+    /**
+     * audioSinks 的写入锁。
+     * Reactor 的 tryEmit* 要求调用方自己保证串行，检测到并发就返回 FAIL_NON_SERIALIZED
+     * 把这次信号丢掉。收句的 complete 与 VAD 送帧分处两个线程，不串行化时收句会被丢，
+     * 订阅该流的 STT 永远等不到结束信号，这一轮说的话整句丢失、会话停在 THINKING。
+     */
+    private final Object audioSinkLock = new Object();
+    /** 唤醒词只有一小段，超过这个帧数说明是异常流量 */
+    private static final int MAX_WAKE_WORD_FRAMES = 100;
+    /**
+     * 唤醒词前置音频：设备在 listen/start 之前补发的 Opus 包，此时 VAD 尚未初始化。
+     * 仅做采集，不进识别链路——送进去会被识别成唤醒词再触发一轮多余对话。
+     */
+    @Getter(AccessLevel.NONE)
+    private final List<byte[]> wakeWordAudio = new ArrayList<>();
+    /**
+     * 会话的最后有效活动时间
+     */
+    protected volatile Instant lastActivityTime;
+
+    /** 当前角色的会话空闲超时；0 表示不自动结束。 */
+    private volatile int inactiveTimeoutSeconds = 60;
+
+    /** 防止高频扫描重复触发告别语和关闭流程。 */
+    private final AtomicBoolean inactivityClosing = new AtomicBoolean(false);
+
+    // ========== 对话层直通方法（内部委托给 dialogueContext，外部无需感知） ==========
+
+    public Persona getPersona()                 { return dialogueContext.getPersona(); }
+    public void setPersona(Persona persona)     { dialogueContext.setPersona(persona); }
+
+    public Player getPlayer()                   { return dialogueContext.getPlayer(); }
+    public void setPlayer(Player player)        { dialogueContext.setPlayer(player); }
+
+    public UserSpeechAudio getUserSpeechAudio()           { return dialogueContext.getUserSpeechAudio(); }
+    public void setUserSpeechAudio(UserSpeechAudio audio) { dialogueContext.setUserSpeechAudio(audio); }
+
+    public ToolsSessionHolder getToolsSessionHolder()                          { return dialogueContext.getToolsSessionHolder(); }
+    public void setToolsSessionHolder(ToolsSessionHolder h)                    { dialogueContext.setToolsSessionHolder(h); }
+    public List<ToolCallback> getToolCallbacks()                               { return dialogueContext.getToolCallbacks(); }
+    public void addToolCallDetail(Long turnId, String name, String args, String result) { dialogueContext.addToolCallDetail(turnId, name, args, result); }
+    public boolean isFunctionCalled()                                          { return dialogueContext.isFunctionCalled(); }
+
+    /** 本次说话的识别过程，说得久时由多段 STT 流组成，起新一轮时整体换掉 */
+    private volatile SpeechTurn speechTurn;
+
+    // ========== 超时断连标记 ==========
+    private volatile boolean timeoutDisconnect;
+
+    // --------------------设备mcp-------------------------
+    private DeviceMcpHolder deviceMcpHolder = new DeviceMcpHolder();
+
+    public ChatSession(String sessionId) {
+        this.sessionId = sessionId;
+        this.lastActivityTime = DateUtils.instant();
+        this.dialogueContext = new DialogueContext();
+    }
+
+    public boolean tryBeginInactiveClose() {
+        return inactivityClosing.compareAndSet(false, true);
+    }
+
+    public void resetInactiveClosing() {
+        inactivityClosing.set(false);
+    }
+
+    public void clearAudioSinks(){
+        closeAudioStream();
+        // 重置会话状态
+        deviceState = DeviceState.IDLE;
+    }
+
+    // ========== 音频流管理方法（从 SessionManager 迁入） ==========
+
+    /**
+     * 创建新的音频数据流
+     */
+    public void createAudioStream() {
+        synchronized (audioSinkLock) {
+            this.audioSinks = Sinks.many().multicast().onBackpressureBuffer();
+        }
+    }
+
+    /**
+     * 发送音频数据到流
+     */
+    public void sendAudioData(byte[] data) {
+        synchronized (audioSinkLock) {
+            if (audioSinks != null) {
+                audioSinks.tryEmitNext(data);
+            }
+        }
+    }
+
+    /**
+     * 完成音频流（通知下游数据发送完毕）
+     */
+    public void completeAudioStream() {
+        synchronized (audioSinkLock) {
+            if (audioSinks != null) {
+                audioSinks.tryEmitComplete();
+            }
+        }
+    }
+
+    /**
+     * 关闭音频流（先终结再释放引用）。
+     * 只释放引用会让订阅该流的 STT 永远等不到结束信号，连接被服务端超时断开且发送线程泄漏。
+     */
+    public void closeAudioStream() {
+        synchronized (audioSinkLock) {
+            Sinks.Many<byte[]> sink = this.audioSinks;
+            this.audioSinks = null;
+            if (sink != null) {
+                sink.tryEmitComplete();
+            }
+        }
+    }
+
+    /**
+     * 采集唤醒词前置音频。设备只补发唤醒词那一小段，超出上限说明是异常流量，丢弃。
+     */
+    public void addWakeWordAudio(byte[] opusData) {
+        synchronized (wakeWordAudio) {
+            if (wakeWordAudio.size() >= MAX_WAKE_WORD_FRAMES) {
+                return;
+            }
+            wakeWordAudio.add(opusData);
+        }
+    }
+
+    /**
+     * 取出并清空唤醒词前置音频
+     */
+    public List<byte[]> drainWakeWordAudio() {
+        synchronized (wakeWordAudio) {
+            if (wakeWordAudio.isEmpty()) {
+                return List.of();
+            }
+            List<byte[]> frames = new ArrayList<>(wakeWordAudio);
+            wakeWordAudio.clear();
+            return frames;
+        }
+    }
+
+    /**
+     * 音频文件约定路径为：audio/{date}/{device-id}/{role-id}/{timestamp}-{who}.wav|ogg
+     * 按日期分目录，便于批量清理过期数据（直接删整个日期目录）
+     *
+     * @param who
+     * @param instant
+     * @return
+     */
+    public Path getAudioPath(String who, Instant instant) {
+
+        instant = instant.truncatedTo(ChronoUnit.SECONDS);
+
+        LocalDateTime localDateTime = DateUtils.toDateTime(instant);
+        String date = localDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String datetime = localDateTime.format(DateTimeFormatter.ISO_DATE_TIME).replace(":", "");
+        DeviceBO device = this.getDevice();
+        // 判断设备ID是否有不适合路径的特殊字符，它很可能是mac地址需要转换。
+        String deviceId = device.getDeviceId().replace(":", "-");
+        String roleId = device.getRoleId().toString();
+        // assistant 是 TTS 的 opus 流直接落盘，其余是上行音频解码后的 PCM
+        String extension = MessageBO.SENDER_ASSISTANT.equals(who) ? "ogg" : "wav";
+        String filename = "%s-%s.%s".formatted(datetime, who, extension);
+        return Path.of(AudioUtils.AUDIO_PATH, date, deviceId, roleId, filename);
+    }
+
+    /**
+     * 会话连接是否打开中
+     *
+     * @return
+     */
+    public abstract boolean isOpen();
+
+    /**
+     * 音频通道是否打开可用
+     *
+     * @return
+     */
+    public abstract boolean isAudioChannelOpen();
+
+    public abstract void close();
+
+    public abstract void sendTextMessage(String message);
+
+    /**
+     * @param timestamp 帧时间戳，随传输层帧头下发，设备会在上行帧中回显，用于服务端 AEC 对齐
+     */
+    public abstract void sendBinaryMessage(byte[] message, long timestamp);
+
+    public boolean isTimeoutDisconnect()            { return timeoutDisconnect; }
+    public void setTimeoutDisconnect(boolean flag)  { this.timeoutDisconnect = flag; }
+
+    /**
+     * 平台主动下发helloMessage
+     * 一般用于会话激活
+     */
+    public void sendHelloMessage() {}
+}

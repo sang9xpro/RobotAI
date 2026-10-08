@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xiaozhi.device.dal.mysql.mapper.DeviceMapper">
+
+    <sql id="Device_Select_Columns">
+        d.deviceId,
+        d.deviceName,
+        d.roleId,
+        r.roleName,
+        d.state,
+        d.wifiName,
+        d.ip,
+        d.chipModelName,
+        d.type,
+        d.version,
+        d.location,
+        d.createTime,
+        d.updateTime
+    </sql>
+
+    <sql id="Device_From_And_Where">
+        FROM sys_device d
+        LEFT JOIN sys_role r ON r.roleId = d.roleId
+        WHERE 1 = 1
+        <if test="userId != null">
+            AND d.userId = #{userId}
+        </if>
+        <if test="deviceId != null and deviceId != ''">
+            AND d.deviceId = #{deviceId}
+        </if>
+        <if test="deviceName != null and deviceName != ''">
+            AND d.deviceName LIKE CONCAT('%', #{deviceName}, '%')
+        </if>
+        <if test="roleName != null and roleName != ''">
+            AND r.roleName LIKE CONCAT('%', #{roleName}, '%')
+        </if>
+        <if test="state != null and state != ''">
+            AND d.state = #{state}
+        </if>
+        <if test="roleId != null">
+            AND d.roleId = #{roleId}
+        </if>
+    </sql>
+
+    <select id="selectPage" resultType="com.xiaozhi.device.model.DeviceProjection">
+        SELECT
+        <include refid="Device_Select_Columns"/>
+        <include refid="Device_From_And_Where"/>
+        ORDER BY d.createTime DESC
+    </select>
+
+</mapper>

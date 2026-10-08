@@ -1,0 +1,347 @@
+package com.xiaozhi.utils;
+
+import org.springframework.util.Assert;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
+
+/**
+ * 表情符号处理工具类
+ * 用于从文本中提取表情符号、过滤表情符号并映射为情感词
+ *
+ * @author yuchen
+ * @date 2025/4/14
+ */
+@Slf4j
+public class EmojiUtils {
+
+    // 定义表情符号的Unicode范围
+    private static final int[][] EMOJI_RANGES = {
+            { 0x1F600, 0x1F64F }, // 表情符号
+            { 0x1F300, 0x1F5FF }, // 符号和图案
+            { 0x1F680, 0x1F6FF }, // 交通工具和地图符号
+            { 0x1F900, 0x1F9FF }, // 补充符号
+            { 0x1FA70, 0x1FAFF }, // 更多补充符号
+            { 0x2600, 0x26FF }, // 杂项符号
+            { 0x2700, 0x27BF }, // 装饰符号
+            { 0x1F1E6, 0x1F1FF }, // 国旗表情
+            { 0x1F700, 0x1F77F }, // 额外的表情符号
+            { 0x1F3FB, 0x1F3FF }, // 表情符号修饰符
+            { 0x200D, 0x200D }, // 零宽连接符
+            { 0xFE0F, 0xFE0F }, // 变体选择器
+    };
+
+    private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
+    private static final Pattern SPECIAL_CHARS_PATTERN = Pattern.compile("[@#№$%&*]");
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+
+    // Markdown 结构标记，念出来全是噪音。链接只保留可读文字，URL 丢掉
+    private static final Pattern MD_DIVIDER_PATTERN = Pattern.compile("(?m)^\\s*([-*_])\\1{2,}\\s*$");
+    private static final Pattern MD_CODE_FENCE_PATTERN = Pattern.compile("```[a-zA-Z0-9_+-]*");
+    private static final Pattern MD_IMAGE_PATTERN = Pattern.compile("!\\[[^\\]]*\\]\\([^)]*\\)");
+    private static final Pattern MD_LINK_PATTERN = Pattern.compile("\\[([^\\]]*)\\]\\([^)]*\\)");
+    private static final Pattern MD_INLINE_CODE_PATTERN = Pattern.compile("`([^`]*)`");
+    private static final Pattern MD_LINE_PREFIX_PATTERN = Pattern.compile("(?m)^\\s*([>*+-]|\\d+\\.)\\s+");
+    private static final Pattern MD_EMPHASIS_PATTERN = Pattern.compile("[~_]");
+    
+    // 括号整组去掉：舞台指示、颜文字、补充说明，只匹配已闭合且不嵌套的括号
+    private static final Pattern PARENTHESES_PATTERN = Pattern.compile("[(（][^()（）]*[)）]");
+
+    /**
+     * 情绪单词到表情符号的映射，同时是「已知情绪标签」的唯一来源：
+     * {@link #META_TAG_PATTERN} 只认这里的标签，不能放宽成任意小写词
+     */
+    private static final Map<String, String[]> EMOTION_TO_EMOJIS = emotionToEmojis();
+
+    // 方括号元数据标签：[yyyy-MM-ddT..]、[说话人:..]、[neutral]。
+    // 情绪标签只认 EMOTION_TO_EMOJIS 里那批：写成任意小写词的话，
+    // 模型回答里的 [apple]、arr[index] 也会被静默删掉，而且清洗后的文本还会入库进模型自己的历史
+    private static final Pattern META_TAG_PATTERN = Pattern.compile(
+        "\\[(?:\\d{4}-\\d{2}-\\d{2}T[^\\]]{0,20}|说话人[:：][^\\]]{0,30}|"
+            + String.join("|", EMOTION_TO_EMOJIS.keySet()) + ")\\]\\s*");
+
+    // 颜文字模式 - 匹配常见的颜文字组合
+    private static final Pattern KAOMOJI_PATTERN = Pattern.compile(
+        "[<＜][^>＞]{1,10}[>＞]|" +  // 如 <(￣︶￣)>
+        "[\\\\¯\\\\*][_-]{1,2}[\\\\¯\\\\*]|" +  // 如 \_/ \*_*\
+        "\\\\o/|" +                 // \o/
+        ":-?[)D(]|" +               // :-) :D :-(
+        ";-?[)]|" +                 // ;-)
+        "=\\\\?[_/]"                // =_= =/=
+    );
+
+    // 表情符号到情绪单词的映射
+    private static final Map<String, String> emojiToEmotionMap = new HashMap<>();
+
+    static {
+        // 初始化表情符号到情绪的映射关系
+        initEmojiToEmotionMap();
+    }
+
+    private static Map<String, String[]> emotionToEmojis() {
+        Map<String, String[]> emotionToEmojis = new HashMap<>();
+        // 中立
+        emotionToEmojis.put("neutral", new String[] { "😐", "😶" });
+        // 开心
+        emotionToEmojis.put("happy", new String[] { "🌈", "😊", "🎈", "🐱" });
+        // 笑
+        emotionToEmojis.put("laughing", new String[] { "😀", "😃", "😁", "😏", "😄", "🤪" });
+        // 搞笑
+        emotionToEmojis.put("funny", new String[] { "😂", "🤣", "😆" });
+        // 悲伤
+        emotionToEmojis.put("sad", new String[] { "😢", "😔", "😞", "😑" });
+        // 生气
+        emotionToEmojis.put("angry", new String[] { "😠", "😡", "😒", "😤", "🤬" });
+        // 哭泣
+        emotionToEmojis.put("crying", new String[] { "😭" });
+        // 爱
+        emotionToEmojis.put("loving", new String[] { "❤️", "💕", "😍", "🥰", "💖" });
+        // 尴尬
+        emotionToEmojis.put("embarrassed", new String[] { "😳", "😓", "😅" });
+        // 惊讶
+        emotionToEmojis.put("surprised", new String[] { "😮", "😲", "😯" });
+        // 震惊
+        emotionToEmojis.put("shocked", new String[] { "😱", "😨", "😬" });
+        // 思考
+        emotionToEmojis.put("thinking", new String[] { "🤔", "💭", "💬", "🧐" });
+        // 眨眼
+        emotionToEmojis.put("winking", new String[] { "😉", "🤗", "👋", "🌟", "🐶" });
+        // 酷
+        emotionToEmojis.put("cool", new String[] { "😎" });
+        // 放松
+        emotionToEmojis.put("relaxed", new String[] { "😌" });
+        // 美味
+        emotionToEmojis.put("delicious", new String[] { "😋", "🤤", "🍽️" });
+        // 亲吻
+        emotionToEmojis.put("kissy", new String[] { "😘", "💋", "😚", "😗", "😙" });
+        // 自信
+        emotionToEmojis.put("confident", new String[] { "💪" });
+        // 困倦
+        emotionToEmojis.put("sleepy", new String[] { "😴" });
+        // 愚蠢
+        emotionToEmojis.put("silly", new String[] { "😛", "😜", "😝" });
+        // 困惑
+        emotionToEmojis.put("confused", new String[] { "😕", "🙄" });
+        return emotionToEmojis;
+    }
+
+    /**
+     * 初始化表情符号到情绪的映射
+     */
+    private static void initEmojiToEmotionMap() {
+        // 填充表情符号到情绪单词的映射
+        for (Map.Entry<String, String[]> entry : EMOTION_TO_EMOJIS.entrySet()) {
+            String emotion = entry.getKey();
+            for (String emoji : entry.getValue()) {
+                // 将表情符号的字符逐个映射到情绪单词
+                emojiToEmotionMap.put(emoji, emotion);
+            }
+        }
+    }
+
+    /**
+     * 清理文本，移除HTML标签、特殊字符和控制字符
+     *
+     * @param text 输入文本
+     * @return 清理后的文本
+     */
+    public static String cleanText(String text) {
+        // 必须先于移除换行：列表与引用前缀靠行首定位；先于括号清洗：链接的 (url) 靠 Markdown 规则处理
+        text = stripMarkdown(text);
+        text = stripMetaTags(text);
+        text = stripParentheses(text);
+
+        // 换行转空格而不是直接删：多行列表被拼成一句会连着念，没有停顿
+        text = text.replaceAll("[\\n\\r]", " ");
+
+        // 移除控制字符
+        text = text.replaceAll("[\\t\b\\f]", "");
+
+        // 移除HTML标签
+        text = HTML_TAG_PATTERN.matcher(text).replaceAll("");
+
+        // 移除特殊符号
+        text = SPECIAL_CHARS_PATTERN.matcher(text).replaceAll("");
+
+        // 替换连续的空白字符为单个空格
+        text = WHITESPACE_PATTERN.matcher(text).replaceAll(" ");
+
+        // 去除首尾空格
+        return text.trim();
+    }
+
+    /**
+     * 去掉方括号元数据标签，标签后紧跟的空白一并去掉
+     */
+    public static String stripMetaTags(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        return META_TAG_PATTERN.matcher(text).replaceAll("");
+    }
+
+    /**
+     * 去掉括号及括号内全部内容，只处理已闭合的括号
+     */
+    public static String stripParentheses(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        return PARENTHESES_PATTERN.matcher(text).replaceAll("");
+    }
+
+    /**
+     * Markdown 图片整体去掉，链接只保留可读文字
+     */
+    public static String stripLinks(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        text = MD_IMAGE_PATTERN.matcher(text).replaceAll("");
+        return MD_LINK_PATTERN.matcher(text).replaceAll("$1");
+    }
+
+    /**
+     * 去掉 Markdown 结构标记，保留可读内容。
+     * 流式输出下标记可能跨句被切断，此时该句按原样发音。
+     */
+    private static String stripMarkdown(String text) {
+        text = MD_DIVIDER_PATTERN.matcher(text).replaceAll("");
+        text = MD_CODE_FENCE_PATTERN.matcher(text).replaceAll("");
+        text = stripLinks(text);
+        text = MD_INLINE_CODE_PATTERN.matcher(text).replaceAll("$1");
+        text = MD_LINE_PREFIX_PATTERN.matcher(text).replaceAll("");
+        return MD_EMPHASIS_PATTERN.matcher(text).replaceAll("");
+    }
+
+    /**
+     * 检查字符是否是表情符号
+     *
+     * @param codePoint 输入字符的Unicode码点
+     * @return 如果是表情符号返回true，否则返回false
+     */
+    public static boolean isEmoji(int codePoint) {
+        for (int[] range : EMOJI_RANGES) {
+            if (codePoint >= range[0] && codePoint <= range[1]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 检查文本是否包含颜文字
+     *
+     * @param text 要检查的文本
+     * @return 如果包含颜文字返回true，否则返回false
+     */
+    public static boolean containsKaomoji(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return PARENTHESES_PATTERN.matcher(text).find() || KAOMOJI_PATTERN.matcher(text).find();
+    }
+
+    /**
+     * 过滤文本中的颜文字
+     *
+     * @param text 要过滤的文本
+     * @return 过滤后的文本
+     */
+    public static String filterKaomoji(String text) {
+        if (text == null) {
+            return null;
+        }
+        return KAOMOJI_PATTERN.matcher(stripParentheses(text)).replaceAll("");
+    }
+
+    /**
+     * 提取句子中的表情符号
+     *
+     * @param text 输入的句子
+     * @return 包含所有表情符号的列表
+     */
+    public static List<String> extractEmojis(String text) {
+        List<String> emojis = new ArrayList<>();
+        for (int i = 0; i < text.length();) {
+            int codePoint = text.codePointAt(i);
+            if (Character.isValidCodePoint(codePoint)) {
+                String emoji = new String(Character.toChars(codePoint));
+                if (isEmoji(codePoint)) {
+                    emojis.add(emoji);
+                }
+            }
+            i += Character.charCount(codePoint);
+        }
+        return emojis;
+    }
+
+    /**
+     * 通过表情符号获取情绪单词
+     *
+     * @param emoji 表情符号
+     * @return 情绪单词，如果没有匹配则返回"happy"
+     */
+    public static String getEmotionByEmoji(String emoji) {
+        return emojiToEmotionMap.getOrDefault(emoji, "happy");
+    }
+
+    /**
+     * 所有可用的情绪词列表（用于随机选取）
+     */
+    private static final String[] EMOTIONS = {
+            "neutral", "happy", "laughing", "funny", "sad", "angry", "crying",
+            "loving", "embarrassed", "surprised", "shocked", "thinking", "winking",
+            "cool", "relaxed", "delicious", "kissy", "confident", "sleepy", "silly", "confused"
+    };
+
+    /**
+     * 随机返回一个情绪词（当句子没有表情符号时使用）
+     */
+    public static String getRandomEmotion() {
+        return EMOTIONS[ThreadLocalRandom.current().nextInt(EMOTIONS.length)];
+    }
+
+    /**
+     * 处理句子，移除表情符号并映射为心情单词
+     *
+     * @param text 输入的句子
+     * @return 返回包含处理后句子和表情列表的对象
+     */
+    public static String processSentence(String text, List<String> moods) {
+        Assert.notNull(moods, "moods cannot be null");
+        Assert.hasText(text, "text cannot be empty");
+        text = cleanText(text);
+        StringBuilder cleanedText = new StringBuilder();
+
+        int length = text.length();
+        for (int i = 0; i < length;) {
+            int codePoint = text.codePointAt(i);
+            if (isEmoji(codePoint)) {
+                // 转换为表情字符串并匹配情感词
+                String emoji = new String(Character.toChars(codePoint));
+                String mood = getEmotionByEmoji(emoji);
+                if (mood != null && !mood.isEmpty()) {
+                    moods.add(mood);
+                }
+                // 跳过当前表情符号
+                i += Character.charCount(codePoint);
+            } else {
+                // 保留非表情字符
+                cleanedText.appendCodePoint(codePoint);
+                i += Character.charCount(codePoint);
+            }
+        }
+        
+        // 过滤颜文字
+        String filteredText = filterKaomoji(cleanedText.toString().trim());
+        
+        return  filteredText;
+    }
+
+}

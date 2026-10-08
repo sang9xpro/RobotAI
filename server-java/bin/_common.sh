@@ -1,0 +1,349 @@
+#!/usr/bin/env bash
+# =============================================================================
+# 公共函数库，被 server.sh / dialogue.sh / all.sh 引用，不直接执行
+# =============================================================================
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOGS_DIR="$ROOT_DIR/logs"
+
+# ---- 颜色 ----
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+
+_log()  { echo -e "${GREEN}[xiaozhi]${NC} $*"; }
+_info() { echo -e "${CYAN}[xiaozhi]${NC} $*"; }
+_warn() { echo -e "${YELLOW}[xiaozhi]${NC} $*"; }
+_err()  { echo -e "${RED}[xiaozhi]${NC} $*" >&2; }
+_ok()   { echo -e "${GREEN}[xiaozhi]${NC} ${BOLD}$*${NC}"; }
+
+# ---- 控制台重定向文件轮转 ----
+# Logback 自己的 FILE/ERROR_FILE 有 rollingPolicy，但 nohup 重定向出去的 .out 是纯 append，
+# 长期运行会无限增长。这里只在每次启动时做一次按大小轮转，够用且不引入 logrotate 依赖。
+rotate_console_log() {
+  local file="$1" max_bytes=$((50 * 1024 * 1024)) keep=5
+  [[ -f "$file" ]] || return 0
+  local size
+  size=$(wc -c < "$file" 2>/dev/null || echo 0)
+  if (( size > max_bytes )); then
+    mv "$file" "$file.$(date +%Y%m%d%H%M%S)"
+    # 只留最近 $keep 份，按文件名（含时间戳）倒序排，多出来的删掉
+    ls -1 "$file".* 2>/dev/null | sort -r | tail -n +$((keep + 1)) | xargs -r rm -f
+  fi
+}
+
+# ---- 部署模式检测 ----
+# 部署模式：$ROOT_DIR 下没有 pom.xml（纯 jar 部署）或没有 mvn 命令
+# 此时跳过编译，直接使用现成的 jar
+is_deploy_mode() {
+  [[ ! -f "$ROOT_DIR/pom.xml" ]] && return 0
+  ! command -v mvn >/dev/null 2>&1 && return 0
+  return 1
+}
+
+# ---- Java 可执行文件解析 ----
+# 优先级: $JAVA_BIN > $JAVA_HOME/bin/java > PATH 中的 java
+# 适配宝塔/独立安装 JDK 不在 PATH 的场景（例如 /www/server/java/jdk-21.0.2/bin/java）
+resolve_java() {
+  if [[ -n "$JAVA_BIN" && -x "$JAVA_BIN" ]]; then
+    echo "$JAVA_BIN"; return 0
+  fi
+  if [[ -n "$JAVA_HOME" && -x "$JAVA_HOME/bin/java" ]]; then
+    echo "$JAVA_HOME/bin/java"; return 0
+  fi
+  if command -v java >/dev/null 2>&1; then
+    command -v java; return 0
+  fi
+  return 1
+}
+
+# ---- 启动前自检 ----
+# 检查 JDK 版本、模型与原生库、中间件连通性，SKIP_PREFLIGHT=1 跳过
+preflight() {
+  [[ "${SKIP_PREFLIGHT:-0}" == "1" ]] && return 0
+
+  local failed=0
+
+  # 1) JDK 21+
+  local java_bin java_major
+  if ! java_bin="$(resolve_java)"; then
+    _err "未找到 java。请安装 JDK 21+，或设置 JAVA_HOME / JAVA_BIN"
+    failed=1
+  else
+    java_major="$("$java_bin" -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+).*/\1/')"
+    if [[ ! "$java_major" =~ ^[0-9]+$ ]] || (( java_major < 21 )); then
+      _err "JDK 版本过低（检测到 ${java_major:-未知}），本项目需要 21 及以上：$java_bin"
+      failed=1
+    fi
+  fi
+
+  # 2) 原生库与 VAD 模型
+  if [[ ! -d "$ROOT_DIR/lib" ]] || [[ -z "$(ls -A "$ROOT_DIR/lib" 2>/dev/null)" ]]; then
+    _err "缺少原生库目录 lib/，先执行：./scripts/download_base.sh"
+    failed=1
+  fi
+  if [[ ! -f "$ROOT_DIR/models/silero_vad.onnx" ]]; then
+    _err "缺少 VAD 模型 models/silero_vad.onnx，先执行：./scripts/download_base.sh"
+    failed=1
+  fi
+  if [[ ! -d "$ROOT_DIR/models/sense-voice" ]]; then
+    _warn "未检测到本地语音识别模型 models/sense-voice"
+    _warn "  用云端 STT 可以忽略；想用本地识别执行：./scripts/download_stt.sh"
+  fi
+
+  # 3) 中间件连通性
+  check_tcp "MySQL" "$(datasource_host)" "$(datasource_port)" \
+    "docker compose -f docker-compose-db.yml up -d" || failed=1
+  check_tcp "Redis" "${SPRING_DATA_REDIS_HOST:-localhost}" "${SPRING_DATA_REDIS_PORT:-6379}" \
+    "docker compose -f docker-compose-db.yml up -d" || failed=1
+
+  if (( failed )); then
+    echo ""
+    _err "启动前检查未通过，按上面的提示处理后重试（确认无误可用 SKIP_PREFLIGHT=1 跳过）"
+    return 1
+  fi
+  _log "启动前检查通过"
+}
+
+# check_tcp <名称> <主机> <端口> <修复提示>
+check_tcp() {
+  local name="$1" host="$2" port="$3" hint="$4"
+  # macOS 默认没有 timeout，拿不到就不限时
+  local limit=""
+  if command -v timeout >/dev/null 2>&1; then
+    limit="timeout 3"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    limit="gtimeout 3"
+  fi
+  if $limit bash -c "exec 3<>/dev/tcp/${host}/${port}" 2>/dev/null; then
+    return 0
+  fi
+  _err "$name 连不上（${host}:${port}）"
+  _err "  没起的话执行：$hint"
+  return 1
+}
+
+# 从 SPRING_DATASOURCE_URL 取主机/端口，没设则按 localhost:3306
+datasource_host() {
+  local url="${SPRING_DATASOURCE_URL:-}"
+  [[ -z "$url" ]] && { echo "localhost"; return; }
+  echo "$url" | sed -E 's|^jdbc:mysql://([^:/?]+).*|\1|'
+}
+
+datasource_port() {
+  local url="${SPRING_DATASOURCE_URL:-}"
+  [[ "$url" =~ ^jdbc:mysql://[^:/?]+:([0-9]+) ]] && { echo "${BASH_REMATCH[1]}"; return; }
+  echo "3306"
+}
+
+# ---- 编译 ----
+# build <module>  — 只编译该模块及其依赖
+# build all       — 编译全部
+build() {
+  if is_deploy_mode; then
+    _info "部署模式：跳过编译（未检测到 pom.xml 或 mvn 命令）"
+    return 0
+  fi
+
+  local target="${1:-all}"
+  if [[ "$target" == "all" ]]; then
+    _info "编译所有模块..."
+    mvn clean install -DskipTests -q -f "$ROOT_DIR/pom.xml"
+  else
+    _info "编译 $target 及其依赖..."
+    mvn clean install -DskipTests -q -f "$ROOT_DIR/pom.xml" \
+        -pl "$target" --also-make
+  fi
+  _log "编译完成"
+}
+
+# ---- 查找 jar ----
+# xiaozhi-dialogue 使用 classifier=exec，产出 *-exec.jar；其余模块用普通 jar
+# 优先在 $ROOT_DIR 根目录查找（部署模式），找不到再回退到 $module/target/（开发模式）
+find_jar() {
+  local module="$1" jar=""
+  if [[ "$module" == "xiaozhi-dialogue" ]]; then
+    jar=$(ls "$ROOT_DIR/$module"-*-exec.jar 2>/dev/null | head -1)
+    [[ -z "$jar" ]] && jar=$(ls "$ROOT_DIR/$module/target/$module"-*-exec.jar 2>/dev/null | head -1)
+  else
+    jar=$(ls "$ROOT_DIR/$module"-*.jar 2>/dev/null \
+      | grep -v 'original' | grep -v '\-exec\.jar' | head -1)
+    [[ -z "$jar" ]] && jar=$(ls "$ROOT_DIR/$module/target/$module"-*.jar 2>/dev/null \
+      | grep -v 'original' | grep -v '\-exec\.jar' | head -1)
+  fi
+  echo "$jar"
+}
+
+# ---- PID 文件路径 ----
+pid_file() {
+  echo "$LOGS_DIR/$1.pid"
+}
+
+# ---- 判断进程是否存活 ----
+is_running() {
+  local pid_path
+  pid_path="$(pid_file "$1")"
+  [[ -f "$pid_path" ]] && kill -0 "$(cat "$pid_path")" 2>/dev/null
+}
+
+# ---- 运行环境 ----
+# resolve_profile [dev|prod] — 优先级：命令行参数 > 已导出的 SPRING_PROFILES_ACTIVE > dev
+resolve_profile() {
+  local profile="${1:-${SPRING_PROFILES_ACTIVE:-dev}}"
+  case "$profile" in
+    dev|prod) echo "$profile" ;;
+    *) _err "不支持的运行环境: ${profile}（只支持 dev / prod）"; return 1 ;;
+  esac
+}
+
+# ---- 启动单个服务 ----
+# start_service <name> <module> <port> <profile>
+start_service() {
+  local name="$1" module="$2" port="$3" profile="$4"
+
+  if is_running "$name"; then
+    _warn "$name 已在运行 (pid=$(cat "$(pid_file "$name")"))"
+    return 0
+  fi
+
+  # 未设置时设备握手鉴权关闭，本地联调可用，生产部署必须导出
+  if [[ -z "${XIAOZHI_DEVICE_AUTH_SECRET:-}" ]]; then
+    _warn "未设置 XIAOZHI_DEVICE_AUTH_SECRET，$name 的设备握手鉴权处于关闭状态"
+    _warn "  生产部署前导出：export XIAOZHI_DEVICE_AUTH_SECRET=\$(openssl rand -hex 16)"
+    _warn "  server 与 dialogue 必须使用同一个值"
+  fi
+
+  local jar
+  jar="$(find_jar "$module")"
+  if [[ -z "$jar" ]]; then
+    _err "$module jar 不存在，请先编译"; return 1
+  fi
+
+  local java_bin
+  if ! java_bin="$(resolve_java)"; then
+    _err "未找到 java 可执行文件。请安装 JDK 21+ 或设置 JAVA_HOME / JAVA_BIN 环境变量"
+    _err "  例如: export JAVA_HOME=/www/server/java/jdk-21.0.2"
+    return 1
+  fi
+
+  _info "启动 $name (port $port, profile $profile)..."
+  _info "  java: $java_bin"
+  mkdir -p "$LOGS_DIR"
+  rotate_console_log "$LOGS_DIR/$name.out"
+  # 记下启动前 .out 的大小，follow_logs 据此只输出本次启动之后的内容
+  printf -v "OUT_OFFSET_${name//-/_}" '%d' "$(( $(wc -c < "$LOGS_DIR/$name.out" 2>/dev/null || echo 0) ))"
+
+  # cd 到 ROOT_DIR 启动，确保:
+  #   1. Logback 配置中的 ./logs 写到 $ROOT_DIR/logs/
+  #   2. application.yml 中 lib/, models/silero_vad.onnx 等相对路径解析正确
+  ( cd "$ROOT_DIR" && exec nohup "$java_bin" \
+      -Djava.library.path="$ROOT_DIR/lib" \
+      -jar "$jar" \
+      --spring.profiles.active="$profile" \
+      >> "$LOGS_DIR/$name.out" 2>&1 ) &
+
+  local pid=$!
+  echo "$pid" > "$(pid_file "$name")"
+  _ok "$name 已启动  pid=$pid  日志: logs/$name.log  控制台: logs/$name.out"
+}
+
+# ---- 停止单个服务 ----
+stop_service() {
+  local name="$1"
+  local pid_path
+  pid_path="$(pid_file "$name")"
+
+  if ! is_running "$name"; then
+    _warn "$name 未在运行"
+    return 0
+  fi
+
+  local pid
+  pid="$(cat "$pid_path")"
+  _info "停止 $name (pid=$pid)..."
+  kill "$pid"
+
+  # 等待最多 15 秒
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && (( i < 15 )); do
+    sleep 1; (( i++ ))
+  done
+
+  if kill -0 "$pid" 2>/dev/null; then
+    _warn "未能正常关闭，强制结束..."
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+
+  rm -f "$pid_path"
+  _ok "$name 已停止"
+}
+
+# ---- 查看状态 ----
+status_service() {
+  local name="$1" port="$2"
+  if is_running "$name"; then
+    local pid
+    pid="$(cat "$(pid_file "$name")")"
+    echo -e "  ${GREEN}●${NC} ${BOLD}$name${NC}  pid=$pid  port=$port  日志: logs/$name.log"
+  else
+    echo -e "  ${RED}○${NC} ${BOLD}$name${NC}  未运行"
+  fi
+}
+
+# ---- 跟随控制台日志 ----
+# follow_logs <name>... — 合并跟随多个服务的 logs/<name>.out，每行带服务名前缀
+# 刚由 start_service 启动的服务只输出本次启动之后的内容，其余服务先回显最近 30 行
+# Ctrl+C 只退出跟随，服务继续在后台运行
+follow_logs() {
+  local colors=("$CYAN" "$YELLOW" "$BLUE") pids=() name i=0
+  for name in "$@"; do
+    local file="$LOGS_DIR/$name.out" var="OUT_OFFSET_${name//-/_}" tag
+    if [[ ! -f "$file" ]]; then
+      _warn "$name 尚无控制台日志 (logs/$name.out)"
+      continue
+    fi
+    tag="$(printf '%b' "${colors[i % ${#colors[@]}]}[${name#xiaozhi-}]${NC} ")"
+    if [[ -n "${!var:-}" ]]; then
+      tail -c "+$(( ${!var} + 1 ))" -F "$file" 2>/dev/null > >(awk -v tag="$tag" '{ print tag $0; fflush() }') &
+    else
+      tail -n 30 -F "$file" 2>/dev/null > >(awk -v tag="$tag" '{ print tag $0; fflush() }') &
+    fi
+    pids+=("$!")
+    i=$((i + 1))
+  done
+  (( ${#pids[@]} > 0 )) || return 1
+
+  echo ""
+  _info "正在跟随日志，Ctrl+C 退出（服务不受影响）"
+  echo ""
+  # kill 后在 trap 里就地 wait 回收，否则 bash 会额外打印一行 "Terminated: 15 tail ..."
+  trap 'kill "${pids[@]}" 2>/dev/null; wait "${pids[@]}" 2>/dev/null; trap - INT TERM; echo ""; _info "已退出日志跟随，服务仍在后台运行"' INT TERM
+  wait "${pids[@]}" 2>/dev/null
+  trap - INT TERM
+}
+
+# ---- 启动后自动跟随日志 ----
+# follow_logs_if_tty <name>... — 只在交互终端里才跟随，管道/CI 等非交互场景直接返回
+follow_logs_if_tty() {
+  [[ -t 1 ]] || return 0
+  follow_logs "$@"
+}
+
+# ---- 重启 ----
+restart_service() {
+  local name="$1" module="$2" port="$3" profile="$4"
+  stop_service  "$name"
+  sleep 1
+  start_service "$name" "$module" "$port" "$profile"
+}
+
+# ---- 用法提示 ----
+usage() {
+  local script="$1"
+  echo -e "用法: ${BOLD}$script${NC} <start|stop|restart|status|logs> [dev|prod]"
+  echo "  start    编译并启动，随后在终端里跟随日志（Ctrl+C 退出跟随，服务不受影响）"
+  echo "  stop     停止"
+  echo "  restart  停止后重新编译并启动，随后跟随日志"
+  echo "  status   查看运行状态"
+  echo "  logs     跟随控制台日志"
+  echo "  运行环境默认 dev；可在命令后加 prod，或先 export SPRING_PROFILES_ACTIVE=prod"
+}

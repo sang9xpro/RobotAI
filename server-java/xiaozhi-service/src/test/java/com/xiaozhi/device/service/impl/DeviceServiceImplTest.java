@@ -1,0 +1,236 @@
+package com.xiaozhi.device.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xiaozhi.common.CacheHelper;
+import com.xiaozhi.common.config.CacheNames;
+import com.xiaozhi.common.exception.OperationFailedException;
+import com.xiaozhi.common.model.PageResult;
+import com.xiaozhi.common.model.bo.DeviceBO;
+import com.xiaozhi.common.model.bo.VerifyCodeBO;
+import com.xiaozhi.device.convert.DeviceConvert;
+import com.xiaozhi.device.dal.mysql.dataobject.DeviceDO;
+import com.xiaozhi.device.dal.mysql.mapper.DeviceMapper;
+import com.xiaozhi.device.model.DeviceProjection;
+import com.xiaozhi.support.MybatisPlusTestHelper;
+import com.xiaozhi.verifycode.service.VerifyCodeService;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+
+import java.util.List;
+import java.util.function.Supplier;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * 钉住设备查询的缓存穿透路径与激活码生成：
+ * 设备号里的冒号在缓存键上要换成连字符，命中缓存时不得回源；
+ * 已有有效验证码时直接复用，否则摇一个有效期内没被占用的六位数字码，摇满次数仍撞码就拒绝发码。
+ */
+@ExtendWith(MockitoExtension.class)
+class DeviceServiceImplTest {
+
+    @BeforeAll
+    static void initTableInfo() {
+        MybatisPlusTestHelper.initTableInfo(DeviceDO.class);
+    }
+
+    @Mock
+    private DeviceMapper deviceMapper;
+
+    @Mock
+    private DeviceConvert deviceConvert;
+
+    @Mock
+    private VerifyCodeService verifyCodeService;
+
+    @Mock
+    private CacheManager cacheManager;
+
+    @Mock
+    private CacheHelper cacheHelper;
+
+    @Mock
+    private Cache cache;
+
+    @InjectMocks
+    private DeviceServiceImpl deviceService;
+
+    @Test
+    void pageReturnsProjectionRecordsUntouched() {
+        DeviceProjection projection = new DeviceProjection();
+        projection.setDeviceId("00:11:22");
+        projection.setRoleName("小智");
+
+        Page<DeviceProjection> page = new Page<>(2, 5);
+        page.setRecords(List.of(projection));
+        page.setTotal(8);
+
+        when(deviceMapper.selectPage(any(Page.class), isNull(), eq("客厅"), isNull(), isNull(), isNull(), eq(7)))
+            .thenReturn(page);
+
+        PageResult<DeviceProjection> result = deviceService.page(2, 5, null, "客厅", null, null, null, 7);
+
+        assertThat(result.getList()).containsExactly(projection);
+        assertThat(result.getTotal()).isEqualTo(8);
+        assertThat(result.getPageNo()).isEqualTo(2);
+        assertThat(result.getPageSize()).isEqualTo(5);
+    }
+
+    @Test
+    void getBOReturnsNullWithoutTouchingCacheWhenDeviceIdBlank() {
+        assertThat(deviceService.getBO(" ")).isNull();
+
+        verifyNoInteractions(cacheManager, cacheHelper, deviceMapper, deviceConvert);
+    }
+
+    @Test
+    void getBOLoadsFromDbAndWritesBackToCacheOnMiss() {
+        DeviceDO deviceDO = new DeviceDO();
+        deviceDO.setDeviceId("00:11:22");
+        DeviceBO deviceBO = new DeviceBO();
+
+        when(cacheManager.getCache(CacheNames.DEVICE)).thenReturn(cache);
+        when(cache.get("00-11-22", DeviceBO.class)).thenReturn(null);
+        stubCacheHelperPreferringCache();
+        when(deviceMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(deviceDO);
+        when(deviceConvert.toBO(deviceDO)).thenReturn(deviceBO);
+
+        assertThat(deviceService.getBO("00:11:22")).isSameAs(deviceBO);
+
+        // 冒号是 Redis 的层级分隔符，缓存键与锁键都必须先替换成连字符
+        verify(cacheHelper).getWithLock(eq("device:00-11-22"), any(), any());
+        verify(cache).put("00-11-22", deviceBO);
+
+        ArgumentCaptor<LambdaQueryWrapper<DeviceDO>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(deviceMapper).selectOne(captor.capture());
+        assertThat(captor.getValue().getTargetSql()).contains("deviceId =");
+        assertThat(captor.getValue().getParamNameValuePairs().values()).containsExactly("00:11:22");
+    }
+
+    @Test
+    void getBOReturnsCachedValueWithoutQueryingDb() {
+        DeviceBO cached = new DeviceBO();
+
+        when(cacheManager.getCache(CacheNames.DEVICE)).thenReturn(cache);
+        when(cache.get("00-11-22", DeviceBO.class)).thenReturn(cached);
+        stubCacheHelperPreferringCache();
+
+        assertThat(deviceService.getBO("00:11:22")).isSameAs(cached);
+
+        verifyNoInteractions(deviceMapper, deviceConvert);
+        verify(cache, never()).put(any(), any());
+    }
+
+    @Test
+    void listByStateAndTypeAppliesOnlyNonBlankFilters() {
+        DeviceDO deviceDO = new DeviceDO();
+        DeviceBO deviceBO = new DeviceBO();
+
+        when(deviceMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(deviceDO));
+        when(deviceConvert.toBO(deviceDO)).thenReturn(deviceBO);
+
+        List<DeviceBO> result = deviceService.listByStateAndType("1", " ");
+
+        assertThat(result).containsExactly(deviceBO);
+
+        ArgumentCaptor<LambdaQueryWrapper<DeviceDO>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(deviceMapper).selectList(captor.capture());
+        assertThat(captor.getValue().getTargetSql()).contains("state =").doesNotContain("type =");
+        assertThat(captor.getValue().getParamNameValuePairs().values()).containsExactly("1");
+    }
+
+    @Test
+    void generateCodeReusesExistingValidCode() {
+        VerifyCodeBO existing = new VerifyCodeBO();
+        existing.setCode("123456");
+
+        when(verifyCodeService.findValid(null, "device-1", "session-1")).thenReturn(existing);
+
+        assertThat(deviceService.generateCode("device-1", "session-1", "bind")).isSameAs(existing);
+
+        verify(verifyCodeService, never()).createForDevice(any(), any(), any(), any());
+    }
+
+    @Test
+    void generateCodeInsertsSixDigitCodeWhenNoneValid() {
+        VerifyCodeBO created = new VerifyCodeBO();
+
+        when(verifyCodeService.findValid(nullable(String.class), eq("device-1"), eq("session-1")))
+            .thenReturn(null, created);
+
+        assertThat(deviceService.generateCode("device-1", "session-1", "bind")).isSameAs(created);
+
+        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
+        verify(verifyCodeService).createForDevice(eq("device-1"), eq("session-1"), eq("bind"), codeCaptor.capture());
+        // 验证码需左侧补零到固定六位，否则设备端按定长解析会取错
+        assertThat(codeCaptor.getValue()).matches("\\d{6}");
+    }
+
+    @Test
+    void generateCodeRerollsWhenDrawnCodeIsAlreadyTaken() {
+        VerifyCodeBO created = new VerifyCodeBO();
+
+        when(verifyCodeService.findValid(nullable(String.class), eq("device-1"), eq("session-1")))
+            .thenReturn(null, created);
+        // 按 code 全局探测：第一次摇到的码在有效期内已被占用，必须重摇
+        when(verifyCodeService.findValid(anyString(), isNull(), isNull()))
+            .thenReturn(new VerifyCodeBO())
+            .thenReturn(null);
+
+        assertThat(deviceService.generateCode("device-1", "session-1", "bind")).isSameAs(created);
+
+        verify(verifyCodeService, times(2)).findValid(anyString(), isNull(), isNull());
+        verify(verifyCodeService).createForDevice(eq("device-1"), eq("session-1"), eq("bind"), anyString());
+    }
+
+    @Test
+    void generateCodeFailsWhenEveryDrawnCodeIsTaken() {
+        when(verifyCodeService.findValid(isNull(), eq("device-1"), eq("session-1"))).thenReturn(null);
+        when(verifyCodeService.findValid(anyString(), isNull(), isNull())).thenReturn(new VerifyCodeBO());
+
+        // 绑定只凭 6 位码定位设备，摇满次数仍撞码时拒绝发码，不能落一个重复码
+        assertThatThrownBy(() -> deviceService.generateCode("device-1", "session-1", "bind"))
+            .isInstanceOf(OperationFailedException.class);
+
+        verify(verifyCodeService, never()).createForDevice(any(), any(), any(), any());
+    }
+
+    @Test
+    void updateCodeAudioPathReturnsZeroWhenAnyArgumentBlank() {
+        assertThat(deviceService.updateCodeAudioPath(" ", "session-1", "123456", "/a.wav")).isZero();
+        assertThat(deviceService.updateCodeAudioPath("device-1", " ", "123456", "/a.wav")).isZero();
+        assertThat(deviceService.updateCodeAudioPath("device-1", "session-1", " ", "/a.wav")).isZero();
+        assertThat(deviceService.updateCodeAudioPath("device-1", "session-1", "123456", " ")).isZero();
+
+        verifyNoInteractions(deviceMapper, verifyCodeService);
+    }
+
+    /** getBO 走缓存包装，测试里让它先读缓存、未命中再回源。 */
+    private void stubCacheHelperPreferringCache() {
+        when(cacheHelper.getWithLock(anyString(), any(), any())).thenAnswer(invocation -> {
+            Supplier<DeviceBO> cacheSupplier = invocation.getArgument(1);
+            Supplier<DeviceBO> dbSupplier = invocation.getArgument(2);
+            DeviceBO cached = cacheSupplier.get();
+            return cached != null ? cached : dbSupplier.get();
+        });
+    }
+}

@@ -1,0 +1,99 @@
+package com.xiaozhi.common.config;
+
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+
+/**
+ * Redis缓存配置
+ * <p>
+ * 防雪崩策略：每个缓存名的 TTL = 基础时长 + 随机偏移（基础时长的 10%，最多 1 小时）。
+ * 随机值在每个 JVM 实例启动时独立生成，多实例部署时同类 key 的 TTL 自然错开。
+ *
+ * @author Joey
+ */
+@Configuration
+@EnableCaching
+public class RedisCacheConfig {
+
+    /** 随机偏移上限（秒） */
+    private static final int MAX_JITTER_SECONDS = 3600;
+
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory factory) {
+        GenericJackson2JsonRedisSerializer serializer = createSerializer();
+
+        // 默认配置: 1天 + 随机偏移
+        RedisCacheConfiguration defaultConfig = buildConfig(serializer, Duration.ofDays(1));
+
+        Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
+        cacheConfigurations.put(CacheNames.DEVICE,           buildConfig(serializer, Duration.ofDays(1)));
+        cacheConfigurations.put(CacheNames.PERMISSION,       buildConfig(serializer, Duration.ofDays(7)));
+        cacheConfigurations.put(CacheNames.USER,             buildConfig(serializer, Duration.ofDays(1)));
+        cacheConfigurations.put(CacheNames.SYS_CONFIG,       buildConfig(serializer, Duration.ofDays(7)));
+        cacheConfigurations.put(CacheNames.MCP_TOOL_EXCLUDE, buildConfig(serializer, Duration.ofDays(7)));
+        cacheConfigurations.put(CacheNames.ROLE,             buildConfig(serializer, Duration.ofDays(1)));
+
+        // transactionAware：事务回滚时不能把已经写进去的淘汰/回填算数，所以推迟到提交后执行。
+        // 代价是事务内的 evict 当次不生效，写完立刻回读会命中旧值——写路径一律走 CacheHelper.evictNow。
+        return RedisCacheManager.builder(factory)
+            .cacheDefaults(defaultConfig)
+            .withInitialCacheConfigurations(cacheConfigurations)
+            .transactionAware()
+            .build();
+    }
+
+    /**
+     * 构建缓存配置，TTL = baseTtl + 随机偏移。
+     * 偏移量 = min(baseTtl 的 10%, MAX_JITTER_SECONDS) 范围内的随机秒数。
+     */
+    private RedisCacheConfiguration buildConfig(GenericJackson2JsonRedisSerializer serializer, Duration baseTtl) {
+        long jitterBound = Math.min(baseTtl.toSeconds() / 10, MAX_JITTER_SECONDS);
+        long jitterSeconds = jitterBound > 0 ? ThreadLocalRandom.current().nextLong(jitterBound) : 0;
+
+        return RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(baseTtl.plusSeconds(jitterSeconds))
+            .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+            .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
+            .disableCachingNullValues();
+    }
+
+    /**
+     * 缓存值按 @class 反序列化，只放行本仓类型与承载它们的 JDK 容器；
+     * 放行范围之外的类型 id 会被 Jackson 拒绝，新增可缓存类型时按包前缀加白名单。
+     */
+    private GenericJackson2JsonRedisSerializer createSerializer() {
+        PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
+            .allowIfSubType("com.xiaozhi.")
+            .allowIfSubType("java.util.")
+            .allowIfSubType("java.time.")
+            .allowIfSubType("java.math.")
+            .build();
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.activateDefaultTyping(
+            typeValidator,
+            ObjectMapper.DefaultTyping.NON_FINAL,
+            JsonTypeInfo.As.PROPERTY
+        );
+        return new GenericJackson2JsonRedisSerializer(objectMapper);
+    }
+}

@@ -1,0 +1,244 @@
+package com.xiaozhi.ai.tts;
+
+import com.xiaozhi.utils.EmojiUtils;
+import org.springframework.util.StringUtils;
+import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * 句子处理帮助类，统一分句逻辑。
+ * 有状态的实例，不要复用，用完就丢弃。
+ *
+ * 提供两种使用方式：
+ * 1. 响应式：convert(Flux<String>) → Flux<String>，供 FileSynthesizer 使用
+ * 2. 命令式：take(String token) / take()，供 TTS Provider 内部 WebSocket 订阅使用
+ */
+public class SentenceHelper {
+
+    // 句末收尾符号（右引号、右括号等）。当它们紧跟在句末标点(。！？)后面时，
+    // 应当并入当前句一起收尾，而不是被甩到下一句开头，避免字幕引号错位、
+    // 以及把不闭合的引号送给TTS导致其误判"半句未结束"。
+    private static final Pattern CLOSING_MARK_PATTERN = Pattern.compile("[”’\"'）)】」』》〉〕｝\\]]");
+
+    // 数字模式（用于检测小数点是否在数字中）
+    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+\\.\\d+");
+
+    // 最小句子长度（字符数）
+    private static final int MIN_SENTENCE_LENGTH = 8;
+
+    // 上下文缓冲区最大长度（用于数字小数点检测等上下文判断）
+    private static final int CONTEXT_BUFFER_MAX_LENGTH = 20;
+
+    private final StringBuilder currentSentence = new StringBuilder();
+    private final StringBuilder contextBuffer = new StringBuilder();
+
+    // 遇到句末标点(。！？)后暂不立即切句，先等待下一个字符：
+    // 若为右引号/右括号则并入本句再切，否则在句末标点处切句。
+    // 该状态跨 take(token) 调用保持，因收尾符号可能在下一个 token 才到达。
+    private boolean awaitingClosing = false;
+
+    // 待确认的切句由英文句点触发：只有下一个字符是空白或收尾符号才真的切句，
+    // 接着字母数字时按缩写、域名、版本号处理，不切。
+    private boolean awaitingPeriodConfirm = false;
+
+    public SentenceHelper() {
+    }
+
+    /**
+     * 命令式分句：逐 token 输入，返回检测到的完整句子，未成句则返回空字符串。
+     * 供 TTS Provider 内部 WebSocket 订阅回调使用。
+     */
+    public List<SentenceResult> take(String token) {
+        List<SentenceResult> sentences = new ArrayList<>();
+        if (token == null || token.isEmpty()) {
+            return sentences;
+        }
+
+        for (int i = 0; i < token.length();) {
+            int codePoint = token.codePointAt(i);
+            String charStr = new String(Character.toChars(codePoint));
+
+            // 处理"等待收尾符号"状态：上一字符是句末标点(。！？)并已触发切句，
+            // 此处根据当前字符决定右引号/右括号是否并入本句。
+            if (awaitingClosing) {
+                boolean needsConfirm = awaitingPeriodConfirm;
+                awaitingClosing = false;
+                awaitingPeriodConfirm = false;
+                if (CLOSING_MARK_PATTERN.matcher(charStr).find()) {
+                    // 收尾符号并入本句后一起切出，避免引号被甩到下一句开头
+                    appendToBuffers(charStr);
+                    flushSentence(sentences);
+                    i += Character.charCount(codePoint);
+                    continue;
+                } else if (needsConfirm && !Character.isWhitespace(codePoint)) {
+                    // 英文句点后面还接着内容，按缩写、域名、小数处理，不切句
+                } else {
+                    // 当前字符不是收尾符号：先把已累计的句子切出，再照常处理当前字符
+                    flushSentence(sentences);
+                }
+            }
+
+            appendToBuffers(charStr);
+
+            boolean isEndMark = isSentenceEndChar(codePoint);
+            boolean isPauseMark = isPauseChar(codePoint);
+            boolean isSpecialMark = isSpecialChar(codePoint);
+            boolean isNewline = isNewlineChar(codePoint);
+            boolean isEmoji = EmojiUtils.isEmoji(codePoint);
+
+            if (isEndMark && charStr.equals(".")) {
+                String context = contextBuffer.toString();
+                Matcher numberMatcher = NUMBER_PATTERN.matcher(context);
+                if (numberMatcher.find() && numberMatcher.end() >= context.length() - 3) {
+                    isEndMark = false;
+                }
+            }
+
+            boolean shouldSendSentence = false;
+            if (isEndMark || isNewline) {
+                shouldSendSentence = true;
+            } else if (currentSentence.length() >= MIN_SENTENCE_LENGTH) {
+                shouldSendSentence = isPauseMark || isSpecialMark || isEmoji
+                        || EmojiUtils.containsKaomoji(currentSentence.toString());
+            }
+
+            if (shouldSendSentence && currentSentence.length() >= MIN_SENTENCE_LENGTH) {
+                // 句末标点触发的切句延后一格：等待下一字符，若为右引号/右括号则并入本句。
+                // 换行/停顿/表情等触发的切句无需等待收尾符号，直接切出。
+                if (isEndMark) {
+                    awaitingClosing = true;
+                    awaitingPeriodConfirm = charStr.equals(".") || charStr.equals("．");
+                } else {
+                    flushSentence(sentences);
+                }
+            }
+
+            i += Character.charCount(codePoint);
+        }
+
+        return sentences;
+    }
+
+    private static boolean isSentenceEndChar(int cp) {
+        switch (cp) {
+            case '。': case '．': case '.': case '！': case '？': case '!': case '?':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isPauseChar(int cp) {
+        switch (cp) {
+            case '，': case '、': case '；': case ',': case ';':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isSpecialChar(int cp) {
+        switch (cp) {
+            case '：': case ':': case '"':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isNewlineChar(int cp) {
+        switch (cp) {
+            case '\n': case '\r':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * 将字符同时追加到上下文缓冲和当前句缓冲，并维护上下文缓冲的最大长度。
+     */
+    private void appendToBuffers(String charStr) {
+        contextBuffer.append(charStr);
+        if (contextBuffer.length() > CONTEXT_BUFFER_MAX_LENGTH) {
+            contextBuffer.delete(0, contextBuffer.length() - CONTEXT_BUFFER_MAX_LENGTH);
+        }
+        currentSentence.append(charStr);
+    }
+
+    /**
+     * 将当前累计的句子过滤表情后切出并加入结果列表。
+     * 仅当过滤后仍有实质内容时才切出并清空当前句缓冲，否则保留继续累计。
+     */
+    private void flushSentence(List<SentenceResult> sentences) {
+        if (currentSentence.length() == 0) {
+            return;
+        }
+        String rawSentence = currentSentence.toString().trim();
+        if (rawSentence.isEmpty()) {
+            // 纯空白不成句，直接丢弃，不能送进文本清洗
+            currentSentence.setLength(0);
+            return;
+        }
+        List<String> moods = new ArrayList<>();
+        String cleanSentence = EmojiUtils.processSentence(rawSentence, moods);
+        if (containsSubstantialContent(cleanSentence)) {
+            String mood = moods.isEmpty() ? null : moods.get(0);
+            sentences.add(new SentenceResult(cleanSentence, mood));
+            currentSentence.setLength(0);
+        }
+    }
+
+    /**
+     * 命令式分句：刷出缓冲区剩余内容（在文本流结束时调用）。
+     */
+    public SentenceResult take() {
+        String rawSentence = currentSentence.toString().trim();
+        if (rawSentence.isEmpty()) {
+            return new SentenceResult("", null);
+        }
+        List<String> moods = new ArrayList<>();
+        String cleanSentence = EmojiUtils.processSentence(rawSentence, moods);
+        String mood = moods.isEmpty() ? null : moods.get(0);
+        return new SentenceResult(cleanSentence, mood);
+    }
+
+    public void onToken(String token, FluxSink<SentenceResult> sink) {
+        for (SentenceResult result : take(token)) {
+            sink.next(result);
+        }
+    }
+
+    public void onComplete(FluxSink<SentenceResult> sink) {
+        SentenceResult result = take();
+        if (StringUtils.hasText(result.text())) {
+            sink.next(result);
+        }
+        sink.complete();
+    }
+
+    public Flux<SentenceResult> convert(Flux<String> stringFlux) {
+        return Flux.create(sink -> {
+            // 内部订阅挂到 sink 上，下游 dispose 时一并取消 LLM 流
+            Disposable upstream = stringFlux.subscribe(
+                    token -> this.onToken(token, sink),
+                    sink::error,
+                    () -> this.onComplete(sink));
+            sink.onDispose(upstream);
+        });
+    }
+
+    private boolean containsSubstantialContent(String text) {
+        if (text == null || text.trim().length() < MIN_SENTENCE_LENGTH) {
+            return false;
+        }
+        String stripped = text.replaceAll("[\\p{P}\\s]", "");
+        return stripped.length() >= 2;
+    }
+}

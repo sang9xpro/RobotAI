@@ -1,0 +1,312 @@
+<script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons-vue'
+import WaveSurfer from 'wavesurfer.js'
+import { getResourceUrl } from '@/utils/resource'
+import { useAntdTheme } from '@/composables/useAntdTheme'
+import { useEventBus } from '@vueuse/core'
+
+interface Props {
+  audioUrl: string
+  autoPlay?: boolean
+  /** 立即建实例并解码音频；默认等滚进视口再解码，避免整表每行在首屏一起下载 */
+  eager?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  autoPlay: false,
+  eager: false,
+})
+
+const { t } = useI18n()
+const { actualTheme } = useAntdTheme()
+
+// 状态
+const wavesurfer = ref<WaveSurfer | null>(null)
+const isPlaying = ref(false)
+const loading = ref(false)
+const loadError = ref(false)
+const playerId = ref('')
+const waveformRef = ref<HTMLDivElement>()
+const rootRef = ref<HTMLDivElement>()
+let visibilityObserver: IntersectionObserver | null = null
+// 懒加载时记录「用户已点过播放」，等 ready 事件再真正开播
+const pendingPlay = ref(false)
+
+// 使用 VueUse 的事件总线
+const audioPlayBus = useEventBus<string>('audio-play')
+const stopAllAudioBus = useEventBus<void>('stop-all-audio')
+
+/**
+ * 取波形颜色的实际色值
+ * canvas 的 fillStyle 不解析 CSS 变量，直接传 var(--x) 会被静默忽略、波形恒为黑色
+ */
+function resolveWaveColors() {
+  const style = getComputedStyle(document.documentElement)
+  return {
+    waveColor: style.getPropertyValue('--ant-color-border').trim() || '#d9d9d9',
+    progressColor: style.getPropertyValue('--ant-color-primary').trim() || '#1890ff',
+  }
+}
+
+/**
+ * 初始化 WaveSurfer
+ */
+function initWaveSurfer() {
+  if (!waveformRef.value) {
+    console.error('WaveSurfer 容器未找到')
+    return
+  }
+
+  try {
+    // 创建 wavesurfer 实例
+    wavesurfer.value = WaveSurfer.create({
+      container: waveformRef.value,
+      ...resolveWaveColors(),
+      cursorColor: 'transparent',
+      barWidth: 2,
+      barRadius: 2,
+      barGap: 1,
+      height: 40,
+      normalize: true,
+    })
+  } catch (error) {
+    console.error('WaveSurfer 初始化失败:', error)
+    loading.value = false
+    loadError.value = true
+    return
+  }
+
+  // 事件监听
+  wavesurfer.value.on('ready', () => {
+    loading.value = false
+    if ((props.autoPlay || pendingPlay.value) && wavesurfer.value) {
+      pendingPlay.value = false
+      wavesurfer.value.play()
+    }
+  })
+
+  wavesurfer.value.on('play', () => {
+    isPlaying.value = true
+    // 通知其他播放器暂停
+    audioPlayBus.emit(playerId.value)
+  })
+
+  wavesurfer.value.on('pause', () => {
+    isPlaying.value = false
+  })
+
+  wavesurfer.value.on('finish', () => {
+    isPlaying.value = false
+    // 播放结束后将游标重置到开始位置
+    if (wavesurfer.value) {
+      wavesurfer.value.seekTo(0)
+    }
+  })
+
+  wavesurfer.value.on('error', () => {
+    loading.value = false
+    pendingPlay.value = false
+    loadError.value = true
+  })
+
+  // 加载音频
+  if (props.audioUrl) {
+    loadAudio(props.audioUrl)
+  }
+}
+
+/**
+ * 加载音频
+ */
+function loadAudio(url: string) {
+  if (!url) {
+    return
+  }
+  
+  if (!wavesurfer.value) {
+    loadError.value = true
+    return
+  }
+
+  loading.value = true
+  loadError.value = false
+
+  try {
+    // 统一解析出最终加载地址：blob/data URL 直接用，其余走资源 URL 处理
+    const target =
+      url.startsWith('blob:') || url.startsWith('data:') ? url : getResourceUrl(url)
+    if (!target) {
+      loading.value = false
+      loadError.value = true
+      return
+    }
+    // WaveSurfer.load() 返回 Promise，加载失败（网络错误/签名过期/CORS 等）会 reject 出
+    // TypeError: Failed to fetch。必须在此捕获，否则会冒泡成全局未处理 Promise 报错。
+    // UI 状态已由上面的 'error' 事件负责更新，这里的 catch 仅做兜底与静默。
+    Promise.resolve(wavesurfer.value.load(target)).catch((error) => {
+      loading.value = false
+      loadError.value = true
+      console.debug('音频加载失败（已忽略）:', error)
+    })
+  } catch (error) {
+    loading.value = false
+    loadError.value = true
+    console.debug('音频初始化失败（已忽略）:', error)
+  }
+}
+
+function stopObservingVisibility() {
+  visibilityObserver?.disconnect()
+  visibilityObserver = null
+}
+
+/**
+ * 滚进视口才建实例并解码。
+ * 整表几十行不会在首屏一起下载，但只要行是看得见的就有波形，不用点播放才出来。
+ */
+function observeVisibility() {
+  const el = rootRef.value
+  if (!el) {
+    return
+  }
+  // 环境不支持时直接初始化：宁可多下载，也不要让波形一直空着
+  if (typeof IntersectionObserver === 'undefined') {
+    initWaveSurfer()
+    return
+  }
+  visibilityObserver = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) {
+      stopObservingVisibility()
+      initWaveSurfer()
+    }
+  })
+  visibilityObserver.observe(el)
+}
+
+/**
+ * 切换播放/暂停
+ */
+function togglePlay() {
+  if (loading.value) return
+
+  // 懒加载：首次点击才建实例并下载解码，ready 后由 pendingPlay 接管开播
+  if (!wavesurfer.value) {
+    if (!props.audioUrl) return
+    // 视口观察还没触发就先点了播放，这里接管，避免两边各建一个实例
+    stopObservingVisibility()
+    pendingPlay.value = true
+    loading.value = true
+    initWaveSurfer()
+    return
+  }
+
+  wavesurfer.value.playPause()
+}
+
+// 监听其他播放器的播放事件
+audioPlayBus.on((id) => {
+  if (id !== playerId.value && isPlaying.value && wavesurfer.value) {
+    wavesurfer.value.pause()
+  }
+})
+
+// 监听全局停止事件
+stopAllAudioBus.on(() => {
+  if (isPlaying.value && wavesurfer.value) {
+    wavesurfer.value.pause()
+  }
+})
+
+// 监听 audioUrl 变化（未初始化时不建实例，等首次点播放）
+watch(
+  () => props.audioUrl,
+  (newUrl) => {
+    if (wavesurfer.value && newUrl) {
+      loading.value = true
+      loadError.value = false
+      loadAudio(newUrl)
+    }
+  },
+)
+
+// 主题切换后 CSS 变量已经是新值，重新取色刷波形
+watch(actualTheme, () => {
+  wavesurfer.value?.setOptions(resolveWaveColors())
+})
+
+onMounted(() => {
+  // 生成唯一 ID
+  playerId.value = `player_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+  if (props.eager || props.autoPlay) {
+    loading.value = true
+    initWaveSurfer()
+    return
+  }
+  observeVisibility()
+})
+
+onBeforeUnmount(() => {
+  stopObservingVisibility()
+  if (wavesurfer.value) {
+    if (isPlaying.value) {
+      wavesurfer.value.pause()
+    }
+    wavesurfer.value.destroy()
+  }
+})
+</script>
+
+<template>
+  <div v-if="loadError" class="audio-error">
+    <span style="color: var(--ant-color-text-tertiary)">{{ t('common.audioLoadFailed') }}</span>
+  </div>
+  <div v-else ref="rootRef" class="audio-player-container">
+    <div class="player-controls">
+      <a-button
+        type="primary"
+        shape="circle"
+        size="small"
+        :loading="loading"
+        :disabled="loadError"
+        @click="togglePlay"
+      >
+        <template #icon>
+          <PauseCircleOutlined v-if="isPlaying" />
+          <PlayCircleOutlined v-else />
+        </template>
+      </a-button>
+    </div>
+    <div ref="waveformRef" class="waveform-container"></div>
+  </div>
+</template>
+
+<style scoped lang="scss">
+.audio-player-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px;
+  min-height: 50px;
+}
+
+.player-controls {
+  margin-right: 10px;
+}
+
+.waveform-container {
+  flex: 1;
+  height: 40px;
+}
+
+.audio-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 5px;
+  min-height: 50px;
+}
+</style>
+

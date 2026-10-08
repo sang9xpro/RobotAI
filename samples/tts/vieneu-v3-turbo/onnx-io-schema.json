@@ -1,0 +1,1822 @@
+{
+  "sess_pre": {
+    "inputs": [
+      {
+        "name": "inputs_embeds",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          "T",
+          768
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "hidden",
+        "type": "tensor(float)",
+        "shape": [
+          "Mulhidden_dim_0",
+          "T",
+          768
+        ]
+      },
+      {
+        "name": "present_k_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_1",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_1_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_2",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_2_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_3",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_3_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_4",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_4_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_5",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_5_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_6",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_6_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_7",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_7_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_8",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_8_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_9",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_9_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_10",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_10_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_k_11",
+        "type": "tensor(float)",
+        "shape": [
+          "Addpresent_k_11_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_1",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_1_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_2",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_2_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_3",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_3_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_4",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_4_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_5",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_5_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_6",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_6_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_7",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_7_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_8",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_8_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_9",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_9_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_10",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_10_dim_0",
+          4,
+          "T",
+          64
+        ]
+      },
+      {
+        "name": "present_v_11",
+        "type": "tensor(float)",
+        "shape": [
+          "Transposepresent_v_11_dim_0",
+          4,
+          "T",
+          64
+        ]
+      }
+    ]
+  },
+  "sess_dec": {
+    "inputs": [
+      {
+        "name": "inputs_embeds",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          1,
+          768
+        ]
+      },
+      {
+        "name": "position_ids",
+        "type": "tensor(int64)",
+        "shape": [
+          1,
+          1
+        ]
+      },
+      {
+        "name": "past_k_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_k_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      },
+      {
+        "name": "past_v_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P",
+          64
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "hidden",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          1,
+          768
+        ]
+      },
+      {
+        "name": "present_k_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_k_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      },
+      {
+        "name": "present_v_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "P1",
+          64
+        ]
+      }
+    ]
+  },
+  "sess_ac": {
+    "inputs": [
+      {
+        "name": "token_emb",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          "S",
+          768
+        ]
+      },
+      {
+        "name": "position_ids",
+        "type": "tensor(int64)",
+        "shape": [
+          1,
+          "S"
+        ]
+      },
+      {
+        "name": "past_k_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          8,
+          "P",
+          96
+        ]
+      },
+      {
+        "name": "past_v_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          8,
+          "P",
+          96
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "hidden",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          "S",
+          768
+        ]
+      },
+      {
+        "name": "present_k_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          8,
+          "P1",
+          96
+        ]
+      },
+      {
+        "name": "present_v_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          8,
+          "P1",
+          96
+        ]
+      }
+    ]
+  },
+  "sess_codec_dec": {
+    "inputs": [
+      {
+        "name": "audio_codes",
+        "type": "tensor(int32)",
+        "shape": [
+          "batch",
+          "code_length",
+          16
+        ]
+      },
+      {
+        "name": "audio_code_lengths",
+        "type": "tensor(int32)",
+        "shape": [
+          "batch"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "audio",
+        "type": "tensor(float)",
+        "shape": [
+          "batch",
+          "Castaudio_dim_1",
+          "audio_length"
+        ]
+      },
+      {
+        "name": "audio_lengths",
+        "type": "tensor(int32)",
+        "shape": [
+          "batch"
+        ]
+      }
+    ]
+  },
+  "sess_codec_step": {
+    "inputs": [
+      {
+        "name": "audio_codes",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "code_length",
+          16
+        ]
+      },
+      {
+        "name": "audio_code_lengths",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_0",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_1",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_2",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_3",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_offset_0",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_0",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          500
+        ]
+      },
+      {
+        "name": "attn_offset_1",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_1",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          500
+        ]
+      },
+      {
+        "name": "attn_offset_2",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_2",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          500
+        ]
+      },
+      {
+        "name": "attn_offset_3",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          500,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_3",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          500
+        ]
+      },
+      {
+        "name": "attn_offset_4",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          800,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          800,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_4",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          800
+        ]
+      },
+      {
+        "name": "attn_offset_5",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          800,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          800,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_5",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          800
+        ]
+      },
+      {
+        "name": "attn_offset_6",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1200,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1200,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_6",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          1200
+        ]
+      },
+      {
+        "name": "attn_offset_7",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1200,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1200,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_7",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          1200
+        ]
+      },
+      {
+        "name": "attn_offset_8",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_8",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          1600
+        ]
+      },
+      {
+        "name": "attn_offset_9",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_9",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          1600
+        ]
+      },
+      {
+        "name": "attn_offset_10",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_10",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          1600
+        ]
+      },
+      {
+        "name": "attn_offset_11",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          1600,
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_11",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          1600
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "audio",
+        "type": "tensor(float)",
+        "shape": [
+          "Castaudio_dim_0",
+          "Castaudio_dim_1",
+          "audio_length"
+        ]
+      },
+      {
+        "name": "audio_lengths",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_out_0",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_out_1",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_out_2",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "transformer_offset_out_3",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_offset_out_0",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_0_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_0",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_0_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_0",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_0_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_1",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_1_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_1",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_1_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_1",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_1_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_2",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_2_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_2",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_2_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_2",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_2_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_3",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_3_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_3",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_3_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_3",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_3_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_4",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_4_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_4",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_4_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_4",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_4_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_5",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_5_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_5",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_5_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_5",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_5_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_6",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_6_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_6",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_6_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_6",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_6_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_7",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_7_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_7",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_7_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_7",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_7_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_8",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_8_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_8",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_8_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_8",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_8_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_9",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_9_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_9",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_9_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_9",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_9_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_10",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_10_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_10",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_10_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_10",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_10_dim_1"
+        ]
+      },
+      {
+        "name": "attn_offset_out_11",
+        "type": "tensor(int32)",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "name": "attn_cached_keys_out_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_keys_out_11_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_values_out_11",
+        "type": "tensor(float)",
+        "shape": [
+          1,
+          4,
+          "Sliceattn_cached_values_out_11_dim_2",
+          64
+        ]
+      },
+      {
+        "name": "attn_cached_positions_out_11",
+        "type": "tensor(int32)",
+        "shape": [
+          1,
+          "Castattn_cached_positions_out_11_dim_1"
+        ]
+      }
+    ]
+  }
+}

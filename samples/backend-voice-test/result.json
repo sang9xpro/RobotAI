@@ -1,0 +1,14 @@
+{
+  "scope" : "real Java providers; WAV input/file output; no Android/WebSocket/playback",
+  "stt_text" : ".đây là dung lượng lưu trữ không phải ram khi chạy ram còn dành cho bộ nhớ điện tính toán.",
+  "stt_ms" : 671,
+  "llm_text" : "Đúng rồi, dung lượng lưu trữ chứa dữ liệu, còn RAM giữ dữ liệu tạm thời khi máy xử lý.",
+  "llm_first_token_ms" : 44539,
+  "llm_ms" : 45283,
+  "tts_provider" : "edge",
+  "tts_voice" : "zh-CN-XiaoyiNeural",
+  "tts_ms" : 5207,
+  "tts_bytes" : 40896,
+  "result" : "passed",
+  "total_ms" : 51338
+}

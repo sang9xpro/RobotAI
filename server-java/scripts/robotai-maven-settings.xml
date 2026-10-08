@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">
+  <!-- Use Central for standard dependencies; preserve bundled jars and the DSP repository. -->
+  <mirrors>
+    <mirror>
+      <id>robotai-central</id>
+      <mirrorOf>external:*,!be.0110.repo-releases</mirrorOf>
+      <url>https://repo.maven.apache.org/maven2</url>
+    </mirror>
+  </mirrors>
+</settings>

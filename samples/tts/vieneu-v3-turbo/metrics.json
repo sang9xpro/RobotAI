@@ -1,0 +1,167 @@
+{
+  "model": "VieNeu-TTS-v3-Turbo",
+  "precision": "fp32",
+  "threads": 4,
+  "load_seconds": 3.177466665999418,
+  "platform": "macOS ARM CPU",
+  "max_rss_bytes": 1651277824,
+  "samples": [
+    {
+      "gain": 0.9802700572135711,
+      "raw_peak": 0.9997245073318481,
+      "file": "hai-dang.wav",
+      "voice": "Hải Đăng",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "text": "Xin chào, mình là robot đồng hành của bạn. Hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?",
+      "normalized_chunks": [
+        "xin chào, mình là robot đồng hành của bạn. hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?"
+      ],
+      "phonemes": [
+        "sˈin tʃˈaː2w, mˈi2ɲ lˌaː2 ɹˈoʊbɑːt ɗˈo2ŋ hˈe-2ɲ kˌuə4 bˈaː6n. hˈom nˈaj bˈaː6n mˈuəɜn tʃˈɔ2 tʃwˈiɛ6n hˈaj kˈu2ŋ mˈi2ɲ xˈaːɜm fˈaːɜ ɗˈiɛ2w zˈi2?"
+      ],
+      "seconds": 4.96,
+      "synthesis_seconds": 1.1479224169997906,
+      "rtf": 0.2314359711693126,
+      "peak": 0.9799999594688416,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 1.0,
+      "raw_peak": 0.6609402894973755,
+      "file": "truc-ly.wav",
+      "voice": "Trúc Ly",
+      "description": "Nữ · Bắc · Phong cách tự nhiên",
+      "text": "Xin chào, mình là robot đồng hành của bạn. Hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?",
+      "normalized_chunks": [
+        "xin chào, mình là robot đồng hành của bạn. hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?"
+      ],
+      "phonemes": [
+        "sˈin tʃˈaː2w, mˈi2ɲ lˌaː2 ɹˈoʊbɑːt ɗˈo2ŋ hˈe-2ɲ kˌuə4 bˈaː6n. hˈom nˈaj bˈaː6n mˈuəɜn tʃˈɔ2 tʃwˈiɛ6n hˈaj kˈu2ŋ mˈi2ɲ xˈaːɜm fˈaːɜ ɗˈiɛ2w zˈi2?"
+      ],
+      "seconds": 4.64,
+      "synthesis_seconds": 0.8717779999997219,
+      "rtf": 0.1878831896551125,
+      "peak": 0.6609402894973755,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 1.0,
+      "raw_peak": 0.7696592807769775,
+      "file": "adam.wav",
+      "voice": "Adam",
+      "description": "Nam · Nam · Giọng đọc tự nhiên",
+      "text": "Xin chào, mình là robot đồng hành của bạn. Hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?",
+      "normalized_chunks": [
+        "xin chào, mình là robot đồng hành của bạn. hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?"
+      ],
+      "phonemes": [
+        "sˈin tʃˈaː2w, mˈi2ɲ lˌaː2 ɹˈoʊbɑːt ɗˈo2ŋ hˈe-2ɲ kˌuə4 bˈaː6n. hˈom nˈaj bˈaː6n mˈuəɜn tʃˈɔ2 tʃwˈiɛ6n hˈaj kˈu2ŋ mˈi2ɲ xˈaːɜm fˈaːɜ ɗˈiɛ2w zˈi2?"
+      ],
+      "seconds": 5.12,
+      "synthesis_seconds": 1.0040041249994829,
+      "rtf": 0.1960945556639615,
+      "peak": 0.7696592807769775,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 1.0,
+      "raw_peak": 0.6907466650009155,
+      "file": "thuc-doan.wav",
+      "voice": "Thục Đoan",
+      "description": "Nữ · Nam · Phong cách kể chuyện",
+      "text": "Xin chào, mình là robot đồng hành của bạn. Hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?",
+      "normalized_chunks": [
+        "xin chào, mình là robot đồng hành của bạn. hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?"
+      ],
+      "phonemes": [
+        "sˈin tʃˈaː2w, mˈi2ɲ lˌaː2 ɹˈoʊbɑːt ɗˈo2ŋ hˈe-2ɲ kˌuə4 bˈaː6n. hˈom nˈaj bˈaː6n mˈuəɜn tʃˈɔ2 tʃwˈiɛ6n hˈaj kˈu2ŋ mˈi2ɲ xˈaːɜm fˈaːɜ ɗˈiɛ2w zˈi2?"
+      ],
+      "seconds": 6.16,
+      "synthesis_seconds": 1.2498264579999159,
+      "rtf": 0.20289390551946687,
+      "peak": 0.6907466650009155,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 1.0,
+      "raw_peak": 0.8099845051765442,
+      "file": "quang-son.wav",
+      "voice": "Quang Sơn",
+      "description": "Nam · Trung · Phong cách tự nhiên",
+      "text": "Xin chào, mình là robot đồng hành của bạn. Hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?",
+      "normalized_chunks": [
+        "xin chào, mình là robot đồng hành của bạn. hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?"
+      ],
+      "phonemes": [
+        "sˈin tʃˈaː2w, mˈi2ɲ lˌaː2 ɹˈoʊbɑːt ɗˈo2ŋ hˈe-2ɲ kˌuə4 bˈaː6n. hˈom nˈaj bˈaː6n mˈuəɜn tʃˈɔ2 tʃwˈiɛ6n hˈaj kˈu2ŋ mˈi2ɲ xˈaːɜm fˈaːɜ ɗˈiɛ2w zˈi2?"
+      ],
+      "seconds": 6.4,
+      "synthesis_seconds": 1.2777802079999674,
+      "rtf": 0.1996531574999949,
+      "peak": 0.8099845051765442,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 1.0,
+      "raw_peak": 0.5224587917327881,
+      "file": "ngoc-tran.wav",
+      "voice": "Ngọc Trân",
+      "description": "Nữ · Trung · Phong cách tự nhiên",
+      "text": "Xin chào, mình là robot đồng hành của bạn. Hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?",
+      "normalized_chunks": [
+        "xin chào, mình là robot đồng hành của bạn. hôm nay bạn muốn trò chuyện hay cùng mình khám phá điều gì?"
+      ],
+      "phonemes": [
+        "sˈin tʃˈaː2w, mˈi2ɲ lˌaː2 ɹˈoʊbɑːt ɗˈo2ŋ hˈe-2ɲ kˌuə4 bˈaː6n. hˈom nˈaj bˈaː6n mˈuəɜn tʃˈɔ2 tʃwˈiɛ6n hˈaj kˈu2ŋ mˈi2ɲ xˈaːɜm fˈaːɜ ɗˈiɛ2w zˈi2?"
+      ],
+      "seconds": 5.92,
+      "synthesis_seconds": 1.0759011669997562,
+      "rtf": 0.18174006199320206,
+      "peak": 0.5224587917327881,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 1.0,
+      "raw_peak": 0.7127746939659119,
+      "file": "hai-dang-technical.wav",
+      "voice": "Hải Đăng",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "text": "Đây là dung lượng lưu trữ, không phải RAM. Khi chạy, RAM còn dành cho bộ nhớ đệm tính toán.",
+      "normalized_chunks": [
+        "đây là dung lượng lưu trữ, không phải ram. khi chạy, ram còn dành cho bộ nhớ đệm tính toán."
+      ],
+      "phonemes": [
+        "ɗˈəɪ lˌaː2 zˈuŋ lˈyə6ŋ lˈiw tʃˈy5, xˌoŋ fˌaː4j ɹˈaːm. xˌi tʃˈa6j, ɹˈaːm kˌɔ2n zˈe-2ɲ tʃˌɔ bˈo6 ɲˈəːɜ ɗˈe6m t̪ˈiɜɲ t̪wˈaːɜn."
+      ],
+      "seconds": 4.8,
+      "synthesis_seconds": 0.882986166999217,
+      "rtf": 0.18395545145817022,
+      "peak": 0.7127746939659119,
+      "clipped_fraction": 0.0
+    },
+    {
+      "gain": 0.9609779563316163,
+      "raw_peak": 1.0197944641113281,
+      "file": "hai-dang-numbers.wav",
+      "voice": "Hải Đăng",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "text": "Pin còn 85 phần trăm. Mình sẽ nhắc bạn lúc 8 giờ 30 phút sáng. Nhiệt độ hôm nay là 28 độ C.",
+      "normalized_chunks": [
+        "pin còn tám mươi lăm phần trăm. mình sẽ nhắc bạn lúc tám giờ ba mươi phút sáng. nhiệt độ hôm nay là hai mươi tám độ xê."
+      ],
+      "phonemes": [
+        "pˈɪn kˌɔ2n t̪ˈaːɜm mˈyəj lˈam fˈə2n tʃˈam. mˈi2ɲ sˌɛ5 ɲˈaɜc bˈaː6n lˌuɜc t̪ˈaːɜm zˈəː2 bˈaː mˈyəj fˈuɜt̪ sˈaːɜŋ. ɲˈiɛ6t̪ ɗˈo6 hˈom nˈaj lˌaː2 hˈaːj mˈyəj t̪ˈaːɜm ɗˈo6 sˈe."
+      ],
+      "seconds": 6.08,
+      "synthesis_seconds": 1.1323066249997282,
+      "rtf": 0.18623464226969214,
+      "peak": 0.9800000190734863,
+      "clipped_fraction": 0.0
+    }
+  ],
+  "streaming": {
+    "first_chunk_seconds": 0.112781000000723,
+    "total_seconds": 0.4374159580002015,
+    "audio_seconds": 2.24
+  }
+}

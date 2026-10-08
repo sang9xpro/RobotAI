@@ -1,0 +1,64 @@
+package com.xiaozhi.ai.llm.service;
+
+import jakarta.annotation.Resource;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.content.Media;
+import org.springframework.stereotype.Service;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.xiaozhi.ai.llm.factory.ChatModelFactory;
+
+import lombok.extern.slf4j.Slf4j;
+/**
+ * 视觉识别服务。
+ * 封装多模态视觉模型调用，供 MCP 工具或 REST 接口使用。
+ */
+@Slf4j
+@Service
+public class VisionService {
+
+    @Resource
+    private ChatModelFactory chatModelFactory;
+
+    /**
+     * 识别图片内容。
+     *
+     * @param file     图片文件
+     * @param question 用户提问
+     * @return 视觉模型返回的文本描述
+     * @throws IllegalStateException 无可用的视觉模型
+     */
+    public String recognize(MultipartFile file, String question) {
+        ChatModel chatModel = chatModelFactory.getVisionModel();
+        if (chatModel == null) {
+            throw new IllegalStateException("无可用的视觉模型");
+        }
+
+        String contentType = file.getContentType();
+        MimeType mimeType = contentType != null && !contentType.isBlank()
+                ? MimeType.valueOf(contentType) : MimeTypeUtils.IMAGE_JPEG;
+        Media media = Media.builder()
+                .mimeType(mimeType)
+                .data(file.getResource())
+                .build();
+
+        UserMessage userMessage = UserMessage.builder()
+                .media(media)
+                .text(question)
+                .build();
+
+        String result = ChatClient.builder(chatModel)
+                .defaultAdvisors()
+                .build()
+                .prompt()
+                .messages(userMessage)
+                .call()
+                .content();
+        log.info("视觉识别完成");
+        return result;
+    }
+}

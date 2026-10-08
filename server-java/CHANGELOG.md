@@ -1,0 +1,468 @@
+# 变更日志
+
+## [6.1.0] - 2026-09-19
+
+### 💥 升级注意
+
+- **时间统一按应用所在时区**。库里的时间列不带时区，此前一部分由应用写入、一部分由数据库的 `NOW()` 与列默认值写入，
+  数据库与应用不在同一时区时（数据库容器默认 UTC、云数据库）同一张表里会出现差整小时的两种时间。现在建立数据库连接时
+  会把会话时区设成应用的时区，SQL 不再读数据库时钟。应用时区由 `TZ` 决定，compose 默认 `Asia/Shanghai`。
+  启动日志出现「数据库时钟与应用时钟对不上」时，检查 `TZ` 与两台机器是否对时；自己配过 `connection-init-sql` 的不会被覆盖。
+  存量数据不回填。
+- **OTA 下发给设备的时区偏移不再写死东八区**，改为跟随应用时区并随夏令时变化。服务器不在东八区、
+  又希望设备显示北京时间的，给 server 设 `TZ=Asia/Shanghai`。
+- **`sys_user_auth` 列名改为驼峰**（`user_id` → `userId` 等，V88 启动时自动执行，数据保留）。直接对这张表写过 SQL 的要跟着改列名。
+
+### 对话与音频链路
+- feat: 播放中的插话交给模型判定是不是在对设备说话，不是则续播；模型输出不规整时按宽松 JSON 解析，不再静默失效
+- feat: 语音识别支持角色级热词，腾讯、火山、FunASR 直传给服务商
+- feat: 本地语音合成增加并发准入，超出处理能力时丢句而不是无限排队，可配并发数与推理线程数
+- feat: 本地推理（识别、合成）的 CPU 核预算按正在使用的服务动态分配，只用其中一种时不再空着大半核数；闲置 10 分钟后让出份额
+- fix: SenseVoice 解码并发按核预算与推理线程数推导，不再超发到整机核数
+- fix: 唤醒词录音默认不落盘，避免不受保留期管理的文件持续堆积
+- fix: VAD 静音计时、识别与传输超时改用单调时钟，系统对时不再影响收句时机与超时判断
+
+### 架构与规约
+- refactor: 取当前时间、Instant 与 LocalDateTime 互转统一走 `DateUtils`，测试可固定时钟；落库与接口模型用 `LocalDateTime`，
+  运行时时刻用 `Instant`，`Date` 只留在第三方 SDK 与协议要求的位置
+- refactor: `Conversation` 最小构造改静态工厂，`rawMessages` 返回快照，摘要输入带消息元数据前缀
+- refactor: `Persona` 的 `Conversation` 约束为非空，清理各处判空
+- refactor: 方法名按意图命名，不再枚举步骤
+- refactor: `UserAuthDO` 继承 `BaseDO`，去掉逐字段的列名注解
+- test: 新增架构守卫：取时入口、Mapper XML 不读数据库时钟、模型时间字段命名、DO 列名驼峰、镜像发布流水线
+- test: 新增多设备并发生命周期压测；修复播放打断与识别流出错两处用例的竞态
+
+### 修复
+- fix: 监控页「近 N 分钟」类时间窗改由应用时钟计算，与消息写入时间同口径
+- fix: 摘要接口的时间不再按写死的东八区渲染，与消息列表一致
+- fix: 智能体发布时间此前按 UTC 渲染，显示比实际早 8 小时
+- fix: 消息分页的起止时间改为 `LocalDateTime`，不再经过 JDBC 的时区换算
+- fix: 角色页模型下拉的硬编码中文改用国际化文案
+- update: 模型厂商与模型列表更新
+
+### 部署
+- fix: 镜像发布流水线只在本仓库运行；fork 后要自己发布镜像的，把 `docker.yml` 里的仓库名换成自己的
+
+---
+
+## [6.0.0] - 2026-09-18
+
+### 💥 升级注意
+
+- **Docker 数据卷会换名**。compose 现在固定项目名 `xiaozhi`，卷名从 `<所在目录名>_mysql_data`
+  变成 `xiaozhi_mysql_data`。老部署直接 `docker compose up -d` 会挂到新的空卷上，数据看着像丢了
+  （实际仍在旧卷里）。要继续用旧卷，升级前在 `.env` 里写 `COMPOSE_PROJECT_NAME=<原来的目录名>`。
+- **compose 服务与文件改名**：服务 `node` → `web`，`Dockerfile-node` → `Dockerfile-web`。
+  主 compose 默认拉 GHCR 镜像，从源码构建改为 `-f docker-compose.yml -f docker-compose.build.yml`。
+- **`.env` 不再随仓库分发**，改为 `.env.example`；本地已有的 `.env` 不受影响。
+- **前端不再写死后端地址**：WebSocket 与静态资源按页面地址推导，容器部署由 web 容器的 nginx 反代
+  `/api`、`/ws`、`/audio`、`/uploads`。自建反向代理的部署要把 `/ws/` 也代理到 dialogue，
+  或继续用 `VITE_WS_URL` 指定绝对地址。
+
+### 架构与规约
+- refactor: 读写两条路径分开——读侧 Service 直接出 BO/投影，Resp 组装收回 xiaozhi-server；写侧走 AppService → 聚合根 → Repository
+- refactor: template 包降级，写路径收进 ServiceImpl（Mapper + MapStruct `updateDO`）
+- refactor: 分页信封统一 `PageResult`，Req/DO 不再越过 Service 层
+- refactor: 删除只做一行转发的 AppService、零调用的 Convert 方法与 `AuthUtils`
+- refactor: `sys_code` 独立成 `verifycode` 包，单表读写统一走 MyBatis-Plus，XML 只留 JOIN/子查询
+- test: 新增架构守卫（模块边界、Controller 出参、Mapper XML、组件扫描覆盖、敏感字段）与存量违规登记
+
+### 对话与音频链路
+- feat: WebSocket 二进制协议 v2/v3，打通服务端 AEC 的时间戳对齐
+- feat: 接入 listen mode 与设备侧 AEC，打断改为 ASR 首字触发；误打断可续播
+- feat: STT 流式识别中间结果回调；采集设备补发的唤醒词前置音频
+- feat: 角色系统提示词改为模板渲染，补语音对话约束
+- fix: 音频流写入串行化，收句不再被并发送帧挤掉
+- fix: 打断后截断对话历史到用户实际听到的位置，并丢弃编码器残留样本
+- fix: 消息窗口按对话组边界裁剪，不再留下孤儿工具消息
+- fix: VAD/AEC 原生资源随会话关闭释放
+- perf: 缓存 ChatModel 与 EmbeddingModel 实例
+
+### AI 能力
+- feat: 新增 Web 聊天（`WebChatController` + `WebChatService`），ai 模块弱化 device 概念改为 owner
+- feat: 火山语音合成/识别升级 2.0，适配火山思考模型
+- feat: 新增 sherpa-onnx 本地语音识别（SenseVoice），模型就位时作为本地识别的默认选项，Vosk 保留为备选
+- feat: 新增 S3 对象存储
+- fix: 工具调用递归超过五层后停止提供工具并要求模型收尾；同一轮多个工具调用只播一次提示
+- fix: TTS 文本清洗去除 markdown 结构与括号舞台指示
+
+### 安全
+- feat: 设备接入鉴权与视觉接口签名，图片上传补安全校验
+- fix: 审计日志凭证字段打码，明文口令与密钥不再落库
+- fix: AI 运行时配置查询必须带用户，避免退化成全库查询
+- fix: 用户邮箱与手机号补唯一索引
+
+### 部署与文档
+- feat: `docker compose up -d` 一键启动，默认拉 GHCR 预构建镜像；源码构建移到 `docker-compose.build.yml`
+- feat: 镜像发布流水线 `.github/workflows/docker.yml`，打 tag 即发布 server/dialogue/web 三个镜像
+- feat: `bin/*.sh` 与 `bin/*.ps1` 启动前自检 JDK 版本、模型与原生库、MySQL/Redis 连通性；ps1 补齐 profile 参数
+- feat: 前端产物不再写死后端地址，WebSocket 与静态资源按页面地址推导，web 容器 nginx 反代 `/api`、`/ws`、`/audio`、`/uploads`
+- fix: compose 补健康检查与固定项目名，dialogue 等 server 建完表再启动
+- fix: 前端镜像构建改为串行产出产物，不再在 vue-tsc 与 vite 并行时 OOM
+- fix: `download_stt.sh` 支持 `none`，`VOSK_MODEL_SIZE=none` 不再让镜像构建中断
+- docs: 新增 `docs/CONFIGURATION.md`（首次配置、环境变量、安全默认值）与 `docs/FAQ.md`（常见问题统一收口）
+- docs: README 与三份部署文档按一键部署重写，Docker 部署不再需要 clone 仓库
+
+---
+
+## [5.0.0] - 2026-04-11
+
+### 💥 重大变更
+- **refactor!: 项目拆分为多模块架构** 
+  - 从单体项目重构为 Maven 多模块：`xiaozhi-common`、`xiaozhi-service`、`xiaozhi-ai`、`xiaozhi-dialogue`、`xiaozhi-server`
+  - 模块间通过窄接口解耦（AI 模块仍依赖 xiaozhi-service，包括两个 Mapper 直连）
+  - Web 组件从 common 迁移至 server 模块，职责更清晰
+
+### 新增功能
+
+#### 架构 & 基础设施
+- feat: 引入 Flyway 数据库版本管理
+- feat: 引入 DDD 领域驱动设计模式（聚合根、领域事件、Pipeline）
+- feat: 新增通用 Shell 脚本用于服务管理
+- feat: 添加前端单元测试 (Vitest) 和 E2E 测试 (Playwright) 基础设施
+- feat: 新增审计日志注解 (AuditLog)，增强操作追踪
+
+#### 权限 & 安全
+- feat: 重构权限管理系统
+- feat: 新增权限管理页面（前端）
+- feat(auth): 暴露角色权限并在用户管理中展示
+
+#### AI & 对话
+- feat: 增强长期记忆会话，支持图检索能力 (Graph Retrieval)
+- feat: 重构知识库，整合长期记忆与声纹识别
+- feat: 知识库 Pipeline 重构
+- feat: 实现 Edge TTS 流式语音合成
+- feat: 添加从输入流读取 Ogg Opus 格式音频帧的功能
+
+#### 前端
+- feat: 新增音频播放器 fallback 支持
+
+### 重构 & 优化
+
+#### 异常处理统一化
+- refactor: 全面统一 Controller 层异常处理（共 4 批次）
+- refactor: 统一 CRUD 操作失败语义（create/update/delete）
+- refactor: 统一语音克隆、声纹识别、用户校验等模块异常处理
+- refactor: 强化 OTA 协议、上传/TTS、特殊端点的错误处理
+- refactor: 消除 null 和 zero 失败语义，内部 BO 创建不再返回 null
+
+#### 领域模型 & 命名
+- refactor: SysSummary 替换为 SummaryBO
+- refactor: ConversationTurn 重命名为 DialogueTurn
+- refactor: functionNames 重命名为 mcpList
+- refactor: 统一 auth role permission 命名
+- refactor: 用户角色字段统一为 authRole
+- refactor: 重构 ApiResponse 统一响应格式
+- refactor: 重构 token 管理及 message 发送方法
+
+#### API & 接口
+- refactor: 重构 API 端点为 RESTful 风格
+- refactor: 分页参数从 start/limit 统一为 pageNo/pageSize
+- refactor: MCP Controller 错误契约标准化
+- refactor: 拆分 mcpServer 与 mcpEndpoint 模块
+- refactor: 替换手动 login id 转换为 sa-token typed API
+
+#### 架构解耦
+- refactor: 适度解耦 Session 架构
+- refactor: Dialogue 和 Server 模块只扫描需要的包
+- refactor: 移除 req 对象在 dialogue 和内部运行时流中的泄漏
+- refactor: 用户 ID 在 service 和 task 边界显式传递
+- refactor: 运行时路径配置整合，减少 STT/TTS 服务中的硬编码路径
+- refactor: 去除路径硬编码
+- refactor: 统一缓存位置
+- refactor: 统一领域事件
+- refactor: 优化对话逻辑并去掉冗余的虚拟线程方法
+
+#### 清理
+- refactor: 移除未使用的 IntentDetector 类（同批提到的 ExitKeywordDetector 后来又加了回来，仍被 IntentService 使用）
+- refactor: 移除未使用的 HttpSessionProvider、ResponseUtils、SessionProvider、DramaJson 类
+- refactor: 移除声纹阈值自定义功能
+- refactor: 移除多个过时的架构文档
+- delete: 去掉知识库中关于 userId 多余的传递
+- delete: 去除未使用的方法
+
+### 修复
+- fix: 修复若干 bug 及优化集群部署
+- fix: 修复 endpoint 集群部署问题及 mcpServer 迁移依赖
+- fix: 修复 CosyVoice 音频句子发送 bug
+- fix: 修复角色更新后设备未及时更新问题
+- fix: 修复 MQTT 重复构建对话消息与唤醒词多次发送 start 问题
+- fix: 修复测试音效错误及音频缓存命中错误问题
+- fix: 修复类启动错误问题
+- fix: 修复调用错误方法
+
+### Docker & 部署
+- refactor: 统一 Docker 网络、添加资源限制、调整上传大小为 100MB
+- update: Dockerfile-server 适配多模块构建
+- update: Dockerfile-node 构建上下文调整为 web 目录
+- update: .dockerignore 更新排除规则
+- update: docker-compose.yml 移除无用的 maven_repo 卷
+
+### 测试
+- test: 完成 Controller 测试基线
+---
+
+## [3.0.0] - 2025-11-01
+
+### 💥 重大变更
+- **feat: 前端架构全面升级到 Vue3** 🎉
+  - 完整迁移到 Vue 3.5.22 + Composition API
+  - 使用 Vite 7 作为构建工具，提升开发体验和构建速度
+  - 采用 TypeScript 5.9 增强类型安全
+  - 状态管理升级到 Pinia 3
+  - 路由升级到 Vue Router 4
+  - 采用 Composables 模式重构代码，提高可复用性
+
+- **feat: 后端架构全面升级与重构** 🚀
+  - 引入 JWT 认证机制，增强安全性
+  - 新增统一结果封装 (ResultMessage/ResultStatus)
+  - 新增事件驱动架构 (ChatSessionOpenEvent、ChatAbortEvent 等)
+  - 新增完整的权限管理系统 (RBAC)
+  - Controller 层全面重构，代码结构更清晰
+
+### 新增功能
+
+#### 前端
+- feat: 升级 Node.js 运行时到 v22
+- feat: 引入现代化开发工具链
+  - 使用 oxlint 和 ESLint 9 进行代码检查
+  - 集成 Vue DevTools 8 用于调试
+  - 采用 Prettier 3.6 统一代码风格
+- feat: UI 组件库升级到 Ant Design Vue 4.2.6
+- feat: 新增 @vueuse/core 工具库，提供丰富的组合式 API
+- feat: 新增全局加载组件和错误边界
+- feat: 新增浮动聊天组件，优化交互体验
+
+#### 后端核心功能
+- feat: 新增 JWT 认证系统 (JwtUtil)
+  - 支持 Token 生成和刷新
+  - 支持微信登录 Token
+  - 支持自定义 claims
+- feat: 新增微信登录服务 (WxLoginService)
+- feat: 新增权限管理系统
+  - 角色权限映射 (SysAuthRole, SysPermission, SysRolePermission)
+  - 完整的 RBAC 权限控制
+- feat: 新增验证码工具 (CaptchaUtils)
+- feat: 新增邮件工具 (EmailUtils)
+- feat: 新增短信服务 (SmsUtils)
+- feat: 新增文件哈希工具 (FileHashUtil)
+- feat: 新增音频增强工具 (AudioEnhancer)
+
+#### AI & LLM
+- feat: 新增 OpenAI LLM 服务 (OpenAiLlmService)
+  - 支持流式响应
+  - 支持深度思考模式
+  - 支持 Function Calling
+  - 新增 Token 回调机制
+- feat: 新增 MCP (Model Context Protocol) 支持
+  - MCP Session 管理
+  - MCP 设备服务集成
+- feat: 增强对话服务 (DialogueService)
+  - 优化会话管理
+  - 改进消息处理流程
+  - 支持事件驱动
+- feat: VAD 服务重大重构
+  - 优化语音活动检测
+  - 改进 Silero VAD 模型
+  - 新增高级参数配置
+
+#### 依赖更新
+- update: 阿里云 SDK 全面升级
+  - nls-sdk-transcriber: 2.2.1 → 2.2.18
+  - nls-sdk-tts: 2.2.17 → 2.2.18
+  - dashscope-sdk-java: 2.20.2 → 2.20.6
+  - 新增阿里云短信服务 SDK 2.0.24
+- update: Spring Boot 依赖更新
+  - 新增 spring-boot-starter-data-redis (缓存增强)
+  - spring-ai-starter-mcp-client 集成
+- update: commons-io: 2.11.0 → 2.18.0
+- update: okhttp: 5.0.0-alpha.14 → 4.9.3 (提升稳定性)
+- update: 新增 okio 3.13.0
+
+### 优化与改进
+
+#### 前端优化
+- perf: Vite 开发服务器性能大幅提升
+- perf: 生产构建体积优化和加载速度提升
+- perf: 优化路由守卫和权限检查
+- update: Docker 镜像更新到 node:22-alpine
+- update: 依赖包全面更新到最新稳定版本
+- update: 优化开发环境配置和热更新机制
+- dx: 更好的 TypeScript 类型推导和提示
+- dx: 更快的热模块替换 (HMR)
+
+#### 后端优化
+- refactor: 全局异常处理增强 (GlobalExceptionHandler)
+  - 新增资源未找到异常 (ResourceNotFoundException)
+  - 新增未授权异常 (UnauthorizedException)
+  - 统一异常响应格式
+- refactor: 认证拦截器重构 (AuthenticationInterceptor)
+  - 支持 JWT 认证
+  - 优化权限验证逻辑
+- refactor: 会话管理重构 (SessionManager)
+  - 改进会话生命周期管理
+  - 优化并发处理
+- refactor: 消息处理器重构 (MessageHandler)
+  - 优化消息流转
+  - 改进错误处理
+- refactor: WebSocket 处理器优化 (WebSocketHandler)
+  - 增强连接管理
+  - 改进异常处理
+- refactor: 对话记忆系统优化
+  - DatabaseChatMemory 重构
+  - MessageWindowConversation 改进
+  - Conversation 接口优化
+- refactor: LLM 工具调用优化
+  - ToolsGlobalRegistry 改进
+  - XiaoZhiToolCallingManager 重构
+  - 新增 NewChatFunction
+- refactor: STT 服务优化
+  - 所有 STT 提供商代码优化
+  - 改进错误处理和日志
+- refactor: 实体类优化
+  - SysConfig, SysDevice, SysMessage, SysUser 改进
+- refactor: Mapper XML 优化
+  - 所有 Mapper 文件重构
+  - SQL 优化
+- refactor: Service 层全面重构
+  - 新增事务配置 (TransactionConfig)
+  - 优化业务逻辑
+  - 改进数据访问层
+
+### Docker 更新
+- update: docker-compose.yml 配置优化
+  - 改进服务依赖关系
+  - 优化健康检查
+  - 增强网络配置
+- update: Dockerfile-node 升级到 Node 22
+
+---
+
+## [2.8.17] - 2025-07-16
+### 新增
+- feat: 新增 Swagger
+- update: 模型增加辨识度标签
+- update: 删除全局聊天多余缩小按钮
+- update: 优化展示样式，可以切换浏览器标签页样式
+- update: 实体采用 Lombok 方法
+### 修复
+- fix: 修复地址错误问题
+- fix: 修复添加设备时验证码未生效问题
+- fix: 修复 init SQL 脚本初始化缺少字段问题
+- fix: 修复 issues #119 #120
+### 样式优化
+- style: 更新全局聊天缩放动画，更接近苹果效果
+- 优化: 聊天样式
+### 删除
+- delete: 删除无用 log
+### 重构
+- refactor(stt): 优化 VoskSttService 类的代码结构
+- refactor: 去掉多余 log
+
+## [2.8.16] - 2025-07-02
+### 其他变更
+- refactor:vad重构，去除agc
+- refactor:重构音频发送逻辑，按照实际帧位置发送
+
+## [2.8.15] - 2025-07-01
+
+### 修复
+- fix:修复tag更新错误问题
+- fix:修复设备在聆听时，修改角色配置导致缓存更新时多次查询数据库的问题
+- fix:修复init初始化确实头像字段
+
+### 其他变更
+- refactor:优化token缓存，减少冗余代码
+- update:阿里巴巴sdk日志级别改为warn
+
+## [2.8.0] - 2025-06-15
+
+### 新功能
+- feat:增加logback输入 close #37
+- feat:新增橘色设备量展示
+
+### 修复
+- fix(stt.aliyun): do not reuse recognizer
+- fix(stt.aliyun): support long speech recognition
+- fix: memory leak. Should clean up dialogue info after session closed
+
+### 其他变更
+- chore: update version to 2.8.0 [skip ci]
+- update:角色返回增加modelName
+- docs: update changelog for v2.7.68 [skip ci]
+- chore: update version to 2.7.68 [skip ci]
+- docs: update changelog for v2.7.67 [skip ci]
+- chore: update version to 2.7.67 [skip ci]
+- docs: update changelog for v2.7.66 [skip ci]
+- chore: update version to 2.7.66 [skip ci]
+- refactor(stt): simplify SttServiceFactory
+
+## [2.7.68] - 2025-06-14
+
+### 修复
+- fix(stt.aliyun): do not reuse recognizer
+- fix(stt.aliyun): support long speech recognition
+- fix: memory leak. Should clean up dialogue info after session closed
+
+### 其他变更
+- chore: update version to 2.7.68 [skip ci]
+- docs: update changelog for v2.7.67 [skip ci]
+- chore: update version to 2.7.67 [skip ci]
+- docs: update changelog for v2.7.66 [skip ci]
+- chore: update version to 2.7.66 [skip ci]
+- refactor(stt): simplify SttServiceFactory
+
+## [2.7.67] - 2025-06-14
+
+### 修复
+- fix: memory leak. Should clean up dialogue info after session closed
+
+### 其他变更
+- chore: update version to 2.7.67 [skip ci]
+- docs: update changelog for v2.7.66 [skip ci]
+- chore: update version to 2.7.66 [skip ci]
+
+## [2.7.64] - 2025-06-12
+
+### 修复
+- Merge pull request #98 from vritser/main
+- fix(audio): merge audio files
+
+### 其他变更
+- chore: update version to 2.7.64 [skip ci]
+- docs: update changelog for v2.7.63 [skip ci]
+- chore: update version to 2.7.63 [skip ci]
+
+## [2.7.60] - 2025-06-11
+
+### 新功能
+- Merge pull request #96 from vritser/main
+- feat(tts): support minimax t2a
+
+### 修复
+- fix:修复阿里语音合成多余参数，删除
+- fix(tts): tts service factory
+
+### 其他变更
+- chore: update version to 2.7.60 [skip ci]
+- docs: update changelog for v2.7.59 [skip ci]
+- chore: update version to 2.7.59 [skip ci]
+- refactor(tts): add default implements
+- docs: update changelog for v2.7.58 [skip ci]
+- chore: update version to 2.7.58 [skip ci]
+
+## [2.7.59] - 2025-06-11
+
+### 新功能
+- Merge pull request #96 from vritser/main
+- feat(tts): support minimax t2a
+
+### 修复
+- fix(tts): tts service factory
+
+### 其他变更
+- chore: update version to 2.7.59 [skip ci]
+- refactor(tts): add default implements
+- docs: update changelog for v2.7.58 [skip ci]
+- chore: update version to 2.7.58 [skip ci]
+

@@ -1,0 +1,97 @@
+package com.xiaozhi.common.model.req;
+
+import com.xiaozhi.common.annotation.SignedFileUrl;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+@Schema(description = "创建角色")
+public class RoleCreateReq {
+
+    @Schema(description = "角色名称", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "角色名称不能为空")
+    private String roleName;
+
+    @Schema(description = "角色描述")
+    private String roleDesc;
+
+    @Schema(description = "角色头像")
+    @SignedFileUrl
+    private String avatar;
+
+    @Schema(description = "语音名称")
+    private String voiceName;
+
+    @Schema(description = "语音音调")
+    @DecimalMin(value = "0.5", message = "语音音调不能小于0.5")
+    @DecimalMax(value = "2.0", message = "语音音调不能大于2.0")
+    private Double ttsPitch;
+
+    @Schema(description = "语音语速")
+    @DecimalMin(value = "0.5", message = "语音语速不能小于0.5")
+    @DecimalMax(value = "2.0", message = "语音语速不能大于2.0")
+    private Double ttsSpeed;
+
+    @Schema(description = "状态(1启用 0禁用)")
+    private String state;
+
+    @Schema(description = "TTS服务ID")
+    private Integer ttsId;
+
+    @Schema(description = "模型ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "模型ID不能为空")
+    private Integer modelId;
+
+    @Schema(description = "STT服务ID")
+    private Integer sttId;
+
+    @Schema(description = "语音识别热词，每行一个「词 [权重]」")
+    @Size(max = 4000, message = "热词内容过长")
+    private String sttHotwords;
+
+    @Schema(description = "温度参数")
+    @DecimalMin(value = "0.0", message = "温度参数不能小于0")
+    @DecimalMax(value = "2.0", message = "温度参数不能大于2")
+    private Double temperature;
+
+    @Schema(description = "Top-P参数")
+    @DecimalMin(value = "0.0", message = "Top-P参数不能小于0")
+    @DecimalMax(value = "1.0", message = "Top-P参数不能大于1")
+    private Double topP;
+
+    @Schema(description = "语音活动检测-能量阈值")
+    @DecimalMin(value = "0.0", message = "能量阈值不能小于0")
+    @DecimalMax(value = "1.0", message = "能量阈值不能大于1")
+    private Float vadEnergyTh;
+
+    @Schema(description = "语音活动检测-语音阈值")
+    @DecimalMin(value = "0.0", message = "语音阈值不能小于0")
+    @DecimalMax(value = "1.0", message = "语音阈值不能大于1")
+    private Float vadSpeechTh;
+
+    @Schema(description = "语音活动检测-静音阈值")
+    @DecimalMin(value = "0.0", message = "静音阈值不能小于0")
+    @DecimalMax(value = "1.0", message = "静音阈值不能大于1")
+    private Float vadSilenceTh;
+
+    @Schema(description = "语音活动检测-静音毫秒数")
+    @Min(value = 0, message = "静音毫秒数不能小于0")
+    @Max(value = 5000, message = "静音毫秒数不能大于5000")
+    private Integer vadSilenceMs;
+
+    @Schema(description = "会话空闲自动结束秒数，0表示关闭")
+    @Min(value = 0, message = "会话空闲时长不能小于0秒")
+    @Max(value = 3600, message = "会话空闲时长不能超过3600秒")
+    private Integer inactiveTimeoutSeconds;
+
+    @Schema(description = "是否默认角色(1是 0否)")
+    private String isDefault;
+
+}

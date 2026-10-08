@@ -1,0 +1,235 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteRecordRaw } from 'vue-router'
+import MainLayout from '../layouts/MainLayout.vue'
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('../views/LoginView.vue'),
+    meta: {
+      title: 'router.title.login',
+      requiresAuth: false,
+    },
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: () => import('../views/RegisterView.vue'),
+    meta: {
+      title: 'router.title.register',
+      requiresAuth: false,
+    },
+  },
+  {
+    path: '/forget',
+    name: 'forget',
+    component: () => import('../views/ForgetView.vue'),
+    meta: {
+      title: 'router.title.forget',
+      requiresAuth: false,
+    },
+  },
+
+  // 主应用路由
+  {
+    path: '/',
+    component: MainLayout,
+    // redirect: '/dashboard', // 在路由守卫中动态处理
+    children: [
+      {
+        path: 'dashboard',
+        name: 'dashboard',
+        component: () => import('../views/DashboardView.vue'),
+        meta: {
+          title: 'router.title.dashboard',
+          icon: 'DashboardOutlined',
+          requiresAuth: true,
+          permission: 'system:dashboard',
+        },
+      },
+      {
+        path: 'user',
+        name: 'user',
+        component: () => import('../views/UserView.vue'),
+        meta: {
+          title: 'router.title.user',
+          icon: 'TeamOutlined',
+          requiresAuth: true,
+          permission: 'system:user',
+        },
+      },
+      {
+        path: 'device',
+        name: 'device',
+        component: () => import('../views/DeviceView.vue'),
+        meta: {
+          title: 'router.title.device',
+          icon: 'RobotOutlined',
+          requiresAuth: true,
+          permission: 'system:device',
+        },
+      },
+      {
+        path: 'role',
+        name: 'role',
+        component: () => import('../views/RoleView.vue'),
+        meta: {
+          title: 'router.title.role',
+          icon: 'UserAddOutlined',
+          requiresAuth: true,
+          permission: 'system:role',
+        },
+      },
+      {
+        path: 'template',
+        name: 'template',
+        component: () => import('../views/TemplateView.vue'),
+        meta: {
+          title: 'router.title.template',
+          icon: 'SnippetsOutlined',
+          parent: 'router.parent.roleManagement',
+          requiresAuth: true,
+          permission: 'system:prompt-template',
+          hideInMenu: true
+        },
+      },
+      // 对话记录：逐条聊天记录与对话摘要两个 Tab
+      {
+        path: 'memory/chat',
+        name: 'memory-chat',
+        component: () => import('../views/MemoryManagementView.vue'),
+        meta: {
+          title: 'router.title.conversationRecords',
+          parent: 'router.parent.memoryManagement',
+          requiresAuth: true,
+          permission: 'system:role',
+        },
+      },
+      // 配置管理
+      {
+        path: 'config/model',
+        name: 'config-model',
+        component: () => import('../views/config/ModelConfigView.vue'),
+        meta: {
+          title: 'router.title.modelConfig',
+          parent: 'router.parent.configManagement',
+          requiresAuth: true,
+          permission: 'system:config',
+        },
+      },
+      {
+        path: 'config/agent',
+        name: 'config-agent',
+        component: () => import('../views/config/AgentView.vue'),
+        meta: {
+          title: 'router.title.agent',
+          parent: 'router.parent.configManagement',
+          requiresAuth: true,
+          permission: 'system:config:agent',
+        },
+      },
+      {
+        path: 'config/stt',
+        name: 'config-stt',
+        component: () => import('../views/config/SttConfigView.vue'),
+        meta: {
+          title: 'router.title.sttConfig',
+          parent: 'router.parent.configManagement',
+          requiresAuth: true,
+          permission: 'system:config',
+        },
+      },
+      {
+        path: 'config/tts',
+        name: 'config-tts',
+        component: () => import('../views/config/TtsConfigView.vue'),
+        meta: {
+          title: 'router.title.ttsConfig',
+          parent: 'router.parent.configManagement',
+          requiresAuth: true,
+          permission: 'system:config',
+        },
+      },
+      {
+        path: 'config/oss',
+        name: 'config-oss',
+        component: () => import('../views/config/OssConfigView.vue'),
+        meta: {
+          title: 'router.title.ossConfig',
+          parent: 'router.parent.configManagement',
+          requiresAuth: true,
+          permission: 'system:config',
+        },
+      },
+      // Web 聊天
+      {
+        path: 'chat',
+        name: 'chat',
+        component: () => import('../views/ChatView.vue'),
+        meta: {
+          title: 'router.title.chat',
+          icon: 'MessageOutlined',
+          requiresAuth: true,
+          permission: 'system:chat',
+        },
+      },
+      {
+        path: 'auth-role',
+        name: 'auth-role',
+        component: () => import('../views/AuthRoleView.vue'),
+        meta: {
+          title: 'router.title.authRole',
+          icon: 'SafetyCertificateOutlined',
+          requiresAuth: true,
+          permission: 'system:auth-role',
+        },
+      },
+      // 个人中心
+      {
+        path: 'setting/account',
+        name: 'setting-account',
+        component: () => import('../views/setting/AccountView.vue'),
+        meta: {
+          title: 'router.title.account',
+          parent: 'router.parent.settings',
+          requiresAuth: true,
+          permission: 'system:setting',
+        },
+      },
+    ],
+  },
+
+  // 异常页面
+  {
+    path: '/403',
+    name: '403',
+    component: () => import('../views/exception/403.vue'),
+    meta: {
+      title: 'router.title.error403',
+      requiresAuth: false,
+    },
+  },
+  {
+    path: '/404',
+    name: '404',
+    component: () => import('../views/exception/404.vue'),
+    meta: {
+      title: 'router.title.error404',
+      requiresAuth: false,
+    },
+  },
+
+  // 捕获所有未匹配的路由
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/404',
+  },
+]
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes,
+})
+
+export default router

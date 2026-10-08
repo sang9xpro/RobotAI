@@ -1,0 +1,394 @@
+package com.xiaozhi.ai.stt.providers;
+
+import cn.xfyun.model.response.iat.IatResponse;
+import cn.xfyun.model.response.iat.Text;
+import com.google.gson.JsonObject;
+import com.xiaozhi.common.annotation.MonitoredOperation;
+import com.xiaozhi.ai.stt.SttResult;
+import com.xiaozhi.ai.stt.SttService;
+import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.ai.utils.HttpUtil;
+import com.xiaozhi.utils.DateUtils;
+import okhttp3.HttpUrl;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+import static cn.xfyun.util.StringUtils.gson;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class XfyunSttService implements SttService {
+    public static final int StatusFirstFrame = 0;
+    public static final int StatusContinueFrame = 1;
+    public static final int StatusLastFrame = 2;
+
+    private static final String PROVIDER_NAME = "xfyun";
+
+    // 识别超时时间（90秒）
+    private static final long RECOGNITION_TIMEOUT_MS = 90000;
+
+    private static final String hostUrl = "https://iat-api.xfyun.cn/v2/iat";
+
+    private String secretId;
+    private String secretKey;
+    private String appId;
+
+    public XfyunSttService(ConfigBO config) {
+        if (config != null) {
+            this.secretId = config.getApiKey();
+            this.secretKey = config.getApiSecret();
+            this.appId = config.getAppId();
+        }
+    }
+
+    @Override
+    public String getProviderName() {
+        return PROVIDER_NAME;
+    }
+
+    /**
+     * 处理返回结果（包括全量返回与流式返回（结果修正））
+     * <p>
+     * resultSegments 由 WebSocket 回调线程写、可能被主线程（识别超时/异常兜底分支）并发读，
+     * 这里和 {@link #getFinalResult} 用同一把锁保证互斥，避免可见性问题和并发修改异常。
+     */
+    private void handleResultText(Text textObject, List<Text> resultSegments) {
+        synchronized (resultSegments) {
+            // 处理流式返回的替换结果
+            if ("rpl".equals(textObject.getPgs()) && textObject.getRg() != null && textObject.getRg().length == 2) {
+                // 返回结果序号sn字段的最小值为1
+                int start = textObject.getRg()[0] - 1;
+                int end = textObject.getRg()[1] - 1;
+
+                // 将指定区间的结果设置为删除状态
+                for (int i = start; i <= end && i < resultSegments.size(); i++) {
+                    resultSegments.get(i).setDeleted(true);
+                }
+                // log.info("替换操作，服务端返回结果为：" + textObject);
+            }
+
+            // 通用逻辑，添加当前文本到结果列表
+            resultSegments.add(textObject);
+        }
+    }
+
+    /**
+     * 获取最终结果
+     */
+    private String getFinalResult(List<Text> resultSegments) {
+        StringBuilder finalResult = new StringBuilder();
+        synchronized (resultSegments) {
+            for (Text text : resultSegments) {
+                if (text != null && !text.isDeleted()) {
+                    finalResult.append(text.getText());
+                }
+            }
+        }
+        return finalResult.toString();
+    }
+
+    private String getAuthUrl(String apiKey, String apiSecret) throws Exception {
+        URL url = URI.create(XfyunSttService.hostUrl).toURL();
+        SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+        format.setTimeZone(TimeZone.getTimeZone("GMT"));
+        String date = format.format(Date.from(DateUtils.instant()));
+
+        StringBuilder builder = new StringBuilder("host: ").append(url.getHost()).append("\n")
+                .append("date: ").append(date).append("\n")
+                .append("GET ").append(url.getPath()).append(" HTTP/1.1");
+
+        Charset charset = StandardCharsets.UTF_8;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec spec = new SecretKeySpec(apiSecret.getBytes(charset), "HmacSHA256");
+        mac.init(spec);
+        byte[] hexDigits = mac.doFinal(builder.toString().getBytes(charset));
+        String sha = Base64.getEncoder().encodeToString(hexDigits);
+
+        String authorization = String.format("api_key=\"%s\", algorithm=\"%s\", headers=\"%s\", signature=\"%s\"",
+                apiKey, "hmac-sha256", "host date request-line", sha);
+
+        return Objects.requireNonNull(HttpUrl.parse("https://" + url.getHost() + url.getPath()))
+                .newBuilder()
+                .addQueryParameter("authorization",
+                        Base64.getEncoder().encodeToString(authorization.getBytes(charset)))
+                .addQueryParameter("date", date)
+                .addQueryParameter("host", url.getHost())
+                .build()
+                .toString();
+    }
+
+    /**
+     * 中间结果旁路通知：只传非空文本，且回调异常绝不影响识别主流程
+     */
+    private void notifyPartialText(Consumer<String> onPartialText, String text) {
+        if (onPartialText == null || !StringUtils.hasText(text)) {
+            return;
+        }
+        try {
+            onPartialText.accept(text);
+        } catch (Exception e) {
+            log.debug("中间识别结果回调异常，已忽略", e);
+        }
+    }
+
+    @Override
+    public SttResult stream(Flux<byte[]> audioSink) {
+        return stream(audioSink, text -> {
+        });
+    }
+
+    @MonitoredOperation(name = "xiaozhi.stt.stream")
+    @Override
+    public SttResult stream(Flux<byte[]> audioSink, Consumer<String> onPartialText) {
+        // 检查配置是否已设置
+        if (secretId == null || secretKey == null || appId == null) {
+            log.error("讯飞云语音识别配置未设置，无法进行识别");
+            return SttResult.failure(SttResult.FAILURE_LOCAL_ERROR);
+        }
+
+        // 构建鉴权URL
+        String authUrl;
+        try {
+            authUrl = getAuthUrl(secretId, secretKey);
+        } catch (Exception e) {
+            log.error("构建鉴权URL时发生错误！", e);
+            return SttResult.failure(SttResult.FAILURE_LOCAL_ERROR);
+        }
+
+        String wsUrl = authUrl.replace("http://", "ws://")
+                .replace("https://", "wss://");
+        Request request = new Request.Builder().url(wsUrl).build();
+        AtomicInteger status = new AtomicInteger(StatusFirstFrame);
+        AtomicReference<WebSocket> webSocketRef = new AtomicReference<>();
+        BlockingQueue<JsonObject> frameQueue = new LinkedBlockingQueue<>();
+        AtomicBoolean isClosed = new AtomicBoolean(false);
+        AtomicBoolean latchReleased = new AtomicBoolean(false);
+        // 识别失败原因短码，成功为 null
+        AtomicReference<String> failureReason = new AtomicReference<>();
+        CountDownLatch recognitionLatch = new CountDownLatch(1);
+        List<Text> resultSegments = new ArrayList<>();
+
+        HttpUtil.client.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                webSocketRef.set(webSocket);
+                isClosed.set(false);
+                // 使用 Flux 订阅音频流
+                audioSink.subscribeOn(Schedulers.boundedElastic())
+                        .subscribe(
+                                chunk -> {
+                                    if (isClosed.get()) return;
+                                    try {
+                                        if (chunk == null || chunk.length == 0) {
+                                            log.debug("audioSink 数据为空，跳过此帧");
+                                            return;
+                                        }
+                                        if ((status.compareAndSet(StatusFirstFrame, StatusContinueFrame))) {
+                                            log.debug("xfyun开始发送音频首帧");
+                                            frameQueue.offer(buildFirstFrame(chunk, chunk.length));
+                                        } else {
+                                            // log.debug("xfyun继续发送音频帧");
+                                            frameQueue.offer(buildContinueFrame(chunk, chunk.length));
+                                        }
+                                    } catch (Exception e) {
+                                        log.error("发送音频帧失败", e);
+                                    }
+                                },
+                                error -> {
+                                    log.error("音频流错误", error);
+                                },
+                                () -> {
+                                    if (isClosed.get()) return;
+                                    // 流结束，通过队列发送最后一帧，保证帧顺序
+                                    log.debug("audioSink结束发送结束通知");
+                                    JsonObject frame = buildLastFrame();
+                                    frameQueue.offer(frame);
+                                }
+                        );
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                if (isClosed.get()) return;
+                IatResponse response = gson.fromJson(text, IatResponse.class);
+                if (response.getCode() != 0) {
+                    log.warn("code:{}, error:{}, sid:{}",
+                            response.getCode(), response.getMessage(), response.getSid());
+                    // 服务端返回非 0 码即本次会话终止，必须就地收尾，否则只能等识别超时兜底
+                    fail(failureReason, SttResult.FAILURE_UPSTREAM_ERROR, latchReleased, recognitionLatch);
+                    wsClose(webSocketRef, isClosed);
+                    return;
+                }
+
+                if (response.getData() != null && response.getData().getResult() != null) {
+                    Text textObject = response.getData().getResult().getText();
+                    handleResultText(textObject, resultSegments);
+                    // 旁路通知当前累计的中间识别文本（wpgs 已做过替换修正），不影响最终结果产出
+                    notifyPartialText(onPartialText, getFinalResult(resultSegments));
+                }
+
+                if (response.getData() != null && response.getData().getStatus() == 2) {
+                    if (latchReleased.compareAndSet(false, true)) {
+                        recognitionLatch.countDown();
+                    }
+                    // wsClose();
+                    wsClose(webSocketRef, isClosed); // 显式关闭
+                }
+            }
+
+            @Override
+            public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                log.error("流式识别失败", t);
+                wsClose(webSocketRef, isClosed); // 显式关闭
+                isClosed.set(true);
+                webSocketRef.set(null);
+                fail(failureReason, SttResult.FAILURE_UPSTREAM_ERROR, latchReleased, recognitionLatch);
+            }
+
+            @Override
+            public void onClosed(WebSocket webSocket, int code, String reason) {
+                wsClose(webSocketRef, isClosed); // 显式关闭
+                isClosed.set(true);
+                webSocketRef.set(null);
+                super.onClosed(webSocket, code, reason);
+            }
+        });
+
+        // 发送帧线程
+        Thread.startVirtualThread(() -> {
+            while (!isClosed.get()) {
+                try {
+                    JsonObject frame = frameQueue.poll(100, TimeUnit.MILLISECONDS);
+                    if (frame != null) {
+                        WebSocket ws = webSocketRef.get();
+                        if (ws != null) {
+                            ws.send(frame.toString());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("发送音频帧失败", e);
+                }
+            }
+        });
+
+        try {
+            // 等待识别完成或超时
+            boolean recognized = recognitionLatch.await(RECOGNITION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            String finalText = "";
+            if (recognized) {
+                finalText = getFinalResult(resultSegments);
+            } else {
+                String partialResult = getFinalResult(resultSegments);
+                // 即使超时也返回已识别的部分文本
+                if (StringUtils.hasText(partialResult)) {
+                    finalText = partialResult;
+                }
+                wsClose(webSocketRef, isClosed);
+            }
+            // 等到超时且一个字都没识别出来时是失败，不能当成"用户没说话"
+            SttResult result = SttResult.textOnly(finalText).withFailure(failureReason.get());
+            return recognized ? result : result.withFailureIfEmpty(SttResult.FAILURE_TIMEOUT);
+        } catch (Exception e) {
+            log.error("创建语音识别会话时发生错误", e);
+            wsClose(webSocketRef, isClosed);
+            // 主动关闭会话
+            return SttResult.textOnly(getFinalResult(resultSegments))
+                    .withFailure(failureReason.get())
+                    .withFailureIfEmpty(SttResult.FAILURE_LOCAL_ERROR);
+        }
+    }
+
+    /**
+     * 记录失败原因并释放识别等待，重复调用只释放一次。
+     */
+    static void fail(AtomicReference<String> failureReason, String reason,
+                     AtomicBoolean latchReleased, CountDownLatch latch) {
+        failureReason.set(reason);
+        if (latchReleased.compareAndSet(false, true)) {
+            latch.countDown();
+        }
+    }
+
+    private void wsClose(AtomicReference<WebSocket> webSocketRef, AtomicBoolean isClosed) {
+        if (isClosed.compareAndSet(false, true)) {
+            WebSocket ws = webSocketRef.get();
+            if (ws != null) {
+                try {
+                    ws.close(1000, "程序关闭");
+                } catch (Exception e) {
+                    log.warn("关闭 WebSocket 时发生异常", e);
+                }
+            }
+        }
+    }
+
+    private JsonObject buildFirstFrame(byte[] buffer, int len) {
+        JsonObject common = new JsonObject();
+        common.addProperty("app_id", appId);
+
+        JsonObject business = new JsonObject();
+        business.addProperty("language", "zh_cn");
+        business.addProperty("domain", "iat");
+        business.addProperty("accent", "mandarin");
+        business.addProperty("dwa", "wpgs");
+
+        JsonObject data = new JsonObject();
+        data.addProperty("status", StatusFirstFrame);
+        data.addProperty("format", "audio/L16;rate=16000");
+        data.addProperty("encoding", "raw");
+        data.addProperty("audio", Base64.getEncoder().encodeToString(Arrays.copyOf(buffer, len)));
+
+        JsonObject frame = new JsonObject();
+        frame.add("common", common);
+        frame.add("business", business);
+        frame.add("data", data);
+
+        return frame;
+    }
+
+    private JsonObject buildContinueFrame(byte[] buffer, int len) {
+        JsonObject data = new JsonObject();
+        data.addProperty("status", StatusContinueFrame);
+        data.addProperty("format", "audio/L16;rate=16000");
+        data.addProperty("encoding", "raw");
+        data.addProperty("audio", Base64.getEncoder().encodeToString(Arrays.copyOf(buffer, len)));
+
+        JsonObject frame = new JsonObject();
+        frame.add("data", data);
+
+        return frame;
+    }
+
+    private JsonObject buildLastFrame() {
+        JsonObject data = new JsonObject();
+        data.addProperty("status", StatusLastFrame);
+        data.addProperty("audio", "");
+        data.addProperty("format", "audio/L16;rate=16000");
+        data.addProperty("encoding", "raw");
+
+        JsonObject frame = new JsonObject();
+        frame.add("data", data);
+
+        return frame;
+    }
+}

@@ -1,0 +1,193 @@
+package com.xiaozhi.ai.llm.factory;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.common.model.bo.RoleBO;
+import com.xiaozhi.common.port.ConfigLookup;
+import com.xiaozhi.event.AiConfigChangedEvent;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.util.Assert;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import lombok.extern.slf4j.Slf4j;
+/**
+ * ChatModel
+ * 
+ * 设计模式: 策略模式 + 工厂模式
+ * - 通过ChatModelProvider接口定义统一的创建策略
+ * - 每个LLM提供商实现独立的Provider
+ * - 工厂类通过Spring自动注入所有Provider,自动路由到对应实现
+ */
+@Slf4j
+@Component
+public class ChatModelFactory {
+    
+    @Autowired
+    private ConfigLookup configLookup;
+
+    
+    /**
+     * 所有的ChatModel提供者,Spring会自动注入所有实现了ChatModelProvider接口的Bean
+     */
+    private final Map<String, ChatModelProvider> providers;
+
+    /**
+     * key 见 cacheKey()，配置或角色参数变更时失效。
+     * temperature/topP 是角色自由填写的数值，组合数没有上限，用 maximumSize 兜底防止无限增长；
+     * 容量淘汰只从 Map 里摘除引用交给 GC，不会主动 close，避免误伤正在使用该实例的会话。
+     */
+    private final Cache<String, ChatModel> chatModelCache = Caffeine.newBuilder()
+            .maximumSize(256)
+            .build();
+
+    /** key 为 configId，配置变更时失效 */
+    private final Map<Integer, EmbeddingModel> embeddingModelCache = new ConcurrentHashMap<>();
+
+    @Autowired
+    private ObservationRegistry registry;
+    /**
+     * 构造函数,自动注入所有ChatModelProvider
+     * @param providers 所有的Provider实现
+     */
+    @Autowired
+    public ChatModelFactory(List<ChatModelProvider> providers) {
+        // 将Provider列表转换为Map,key为provider名称(小写),value为Provider实例
+        this.providers = providers.stream()
+                .collect(Collectors.toMap(
+                        p -> p.getProviderName().toLowerCase(),
+                        Function.identity()
+                ));
+    }
+    
+    public ChatModel getChatModel(RoleBO role) {
+        RoleBO effectiveRole = role != null ? role : new RoleBO();
+        Integer modelId = effectiveRole.getModelId();
+        Assert.notNull(modelId, "配置ID不能为空");
+        // 每轮重建会连带新建 HttpClient，等于每次对话都重新做一次 TCP+TLS 握手。
+        // temperature/topP 烘焙在模型的 defaultOptions 里，必须进 key，否则改了角色参数不生效
+        String cacheKey = cacheKey(modelId, effectiveRole);
+        return chatModelCache.get(cacheKey,
+                k -> createChatModel(configLookup.getConfig(modelId), effectiveRole));
+    }
+
+    static String cacheKey(Integer modelId, RoleBO role) {
+        return modelId + ":" + role.getTemperature() + ":" + role.getTopP();
+    }
+
+    /**
+     * 本进程内的配置变更：HTTP 入口所在进程不订阅 Redis 广播（xiaozhi-dialogue 不在它的运行时依赖里），
+     * 只能靠本地事件失效缓存；对话进程那侧由 RedisSubscriber.onConfigChanged 处理跨实例广播。
+     * 提交后才清，避免回滚的事务把缓存白清一遍。
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onAiConfigChanged(AiConfigChangedEvent event) {
+        if ("llm".equals(event.getConfigType())) {
+            removeCache(event.getConfigId());
+        }
+    }
+
+    /**
+     * 配置变更后必须失效：configId 不变但 apiKey/endpoint/模型名可能已经改了
+     */
+    public void removeCache(Integer configId) {
+        if (configId == null) {
+            return;
+        }
+        chatModelCache.asMap().entrySet().removeIf(entry -> {
+            if (!entry.getKey().startsWith(configId + ":")) {
+                return false;
+            }
+            closeIfNeeded(entry.getValue());
+            return true;
+        });
+        embeddingModelCache.remove(configId);
+    }
+
+    /**
+     * 移出缓存的 ChatModel 若自带 HTTP 客户端等常驻资源，在此释放；只有不再被复用的实例才会走到这里。
+     */
+    private void closeIfNeeded(ChatModel chatModel) {
+        if (chatModel instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                log.warn("释放ChatModel资源失败: {}", chatModel.getClass().getSimpleName(), e);
+            }
+        }
+    }
+
+    public ChatModel getVisionModel() {
+        ConfigBO config = configLookup.getDefaultConfig("llm", ConfigBO.ModelType.vision.getValue());
+        Assert.notNull(config, "未配置多模态模型");
+        // 走同一份缓存，避免每次多模态调用都新建 ChatModel(连带新建 HttpClient)
+        String cacheKey = config.getConfigId() + ":vision";
+        return chatModelCache.get(cacheKey, k -> createChatModel(config, new RoleBO()));
+    }
+
+    public ChatModel getIntentModel() {
+        ConfigBO config = configLookup.getDefaultConfig("llm", ConfigBO.ModelType.intent.getValue());
+        Assert.notNull(config, "未配置意图识别模型");
+        return createChatModel(config, new RoleBO());
+    }
+
+    public EmbeddingModel getEmbeddingModel(Integer configId) {
+        Assert.notNull(configId, "配置ID不能为空");
+        return embeddingModelCache.computeIfAbsent(configId, id -> {
+            ConfigBO config = configLookup.getConfig(id);
+            Assert.notNull(config, "未找到配置, configId=" + id);
+            return getEmbeddingModel(config);
+        });
+    }
+
+    public EmbeddingModel getEmbeddingModel(ConfigBO config) {
+        Assert.notNull(config, "未配置向量模型");
+        String providerName = config.getProvider().toLowerCase();
+        ChatModelProvider provider = providers.get(providerName);
+        if (provider != null) {
+            return provider.createEmbeddingModel(config);
+        }
+        provider = providers.get("openai");
+        if (provider != null) {
+            return provider.createEmbeddingModel(config);
+        }
+        throw new IllegalArgumentException(
+                String.format("不支持的Provider: %s, 可用的Providers: %s", providerName, providers.keySet()));
+    }
+
+    /**
+     * 创建ChatModel
+     *
+     * @param config 模型配置
+     * @param role 角色配置
+     * @return ChatModel实例
+     */
+    public ChatModel createChatModel(ConfigBO config, RoleBO role) {
+        String providerName = config.getProvider().toLowerCase();
+
+        ChatModelProvider provider = providers.get(providerName);
+        if (provider == null) {
+            // 没有对应的 Provider 时回退到 OpenAI(兼容 OpenAI 协议)
+            provider = providers.get("openai");
+        }
+        if (provider == null) {
+            throw new IllegalArgumentException(
+                    String.format("不支持的Provider: %s, 可用的Providers: %s",
+                            providerName,
+                            providers.keySet())
+            );
+        }
+        return provider.createChatModel(config, role);
+    }
+}

@@ -1,0 +1,177 @@
+# 一键启动：docker compose up -d
+# 默认拉已发布镜像；源码构建见 docker-compose.build.yml，可调项见 .env.example
+name: xiaozhi
+
+# 限制容器日志大小，避免撑满磁盘
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# server 与 dialogue 共用的环境变量
+x-app-environment: &app-environment
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+  SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-xiaozhi}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+  SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-xiaozhi}
+  SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-123456}
+  SPRING_DATA_REDIS_HOST: redis
+  # 下发给设备的服务器 IP，留空则自动探测
+  HOST_IP: ${HOST_IP:-}
+  # 设备接入鉴权密钥，留空等于不设防
+  XIAOZHI_DEVICE_AUTH_SECRET: ${XIAOZHI_DEVICE_AUTH_SECRET:-}
+  TZ: ${TZ:-Asia/Shanghai}
+
+services:
+  mysql:
+    image: mysql:8.0-debian
+    restart: always
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-13306}:3306"  # 只监听回环
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-abc123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-xiaozhi}
+      MYSQL_USER: ${MYSQL_USER:-xiaozhi}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-123456}
+      LANG: C.UTF-8
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - mysql_data:/var/lib/mysql  # 持久化数据
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u $$MYSQL_USER -p$$MYSQL_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - xiaozhi
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - xiaozhi
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  server:
+    image: ${XIAOZHI_IMAGE_SERVER:-ghcr.io/joey-zhou/xiaozhi-server}:${XIAOZHI_TAG:-latest}
+    container_name: xiaozhi-server
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${SERVER_PORT:-8091}:8091"
+    environment: *app-environment
+    # audio/uploads 必须与 dialogue 共享，否则 TTS 缓存与上传文件互相读不到
+    volumes:
+      - audio_data:/app/audio
+      - uploads_data:/app/uploads
+      - server_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8091'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s  # 首次启动要跑完 Flyway 建表
+    networks:
+      - xiaozhi
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  dialogue:
+    image: ${XIAOZHI_IMAGE_DIALOGUE:-ghcr.io/joey-zhou/xiaozhi-dialogue}:${XIAOZHI_TAG:-latest}
+    container_name: xiaozhi-dialogue
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # 等 server 建完表
+      server:
+        condition: service_healthy
+    ports:
+      - "${DIALOGUE_PORT:-8092}:8092"
+    environment: *app-environment
+    volumes:
+      - audio_data:/app/audio
+      - uploads_data:/app/uploads
+      - dialogue_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8092'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - xiaozhi
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G  # VOSK_MODEL_SIZE 换成 standard 时要调大
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  web:
+    image: ${XIAOZHI_IMAGE_WEB:-ghcr.io/joey-zhou/xiaozhi-web}:${XIAOZHI_TAG:-latest}
+    container_name: xiaozhi-web
+    restart: always
+    depends_on:
+      - server
+      - dialogue
+    ports:
+      - "${WEB_PORT:-8084}:8084"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8084/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - xiaozhi
+    logging: *default-logging
+
+networks:
+  xiaozhi:
+    name: xiaozhi-network
+
+volumes:
+  mysql_data:
+  redis_data:
+  audio_data:            # 对话录音与 TTS 缓存
+  uploads_data:          # 用户上传文件
+  server_logs:
+  dialogue_logs:

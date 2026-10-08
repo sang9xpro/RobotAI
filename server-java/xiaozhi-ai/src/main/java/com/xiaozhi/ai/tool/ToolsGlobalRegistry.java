@@ -1,0 +1,97 @@
+package com.xiaozhi.ai.tool;
+
+import com.xiaozhi.ai.tool.session.ToolSession;
+import com.xiaozhi.common.model.resp.McpToolSummaryResp;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.resolution.ToolCallbackResolver;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Service
+public class ToolsGlobalRegistry implements ToolCallbackResolver {
+    private static final String TAG = "FUNCTION_GLOBAL";
+
+    // 用于存储所有function列表
+    protected static final ConcurrentHashMap<String, ToolCallback> allFunction
+            = new ConcurrentHashMap<>();
+
+    @Autowired(required = false)
+    protected List<GlobalFunction> globalFunctions = List.of();
+
+    @Autowired(required = false)
+    private GlobalToolRedisRegistry globalToolRedisRegistry;
+
+    /**
+     * 应用启动后，将本进程注册的 GlobalFunction 元数据发布到 Redis，
+     * 使 server 进程能在"排除工具"界面拿到由 dialogue 进程持有的工具列表。
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void publishGlobalToolMetadata() {
+        if (globalToolRedisRegistry == null || globalFunctions == null || globalFunctions.isEmpty()) {
+            return;
+        }
+        List<GlobalToolRedisRegistry.ToolSummary> summaries = globalFunctions.stream()
+                .map(f -> new GlobalToolRedisRegistry.ToolSummary(f.getToolName(), f.getToolDescription()))
+                .toList();
+        globalToolRedisRegistry.publish(summaries);
+    }
+
+    @Override
+    public ToolCallback resolve(@NotNull String toolName) {
+        return allFunction.get(toolName);
+    }
+
+    /**
+     * Get all registered functions
+     *
+     * @return a map of all registered functions
+     */
+    public Map<String, ToolCallback> getAllFunctions(ToolSession toolSession) {
+        // 注意：这里不再自动注册所有全局函数到allFunction中
+        // 而是返回一个临时的Map，由 ToolRegistrationService 统一管理工具注册
+        Map<String, ToolCallback> tempFunctions = new HashMap<>();
+        globalFunctions.forEach(
+                globalFunction -> {
+                    ToolCallback toolCallback = globalFunction.getFunctionCallTool(toolSession);
+                    if(toolCallback != null){
+                        tempFunctions.put(toolCallback.getToolDefinition().name(), toolCallback);
+                    }
+                }
+        );
+        return tempFunctions;
+    }
+
+    /**
+     * 获取所有已注册 GlobalFunction 的工具摘要（name + description）
+     */
+    public List<McpToolSummaryResp> getGlobalToolSummaries() {
+        return globalFunctions.stream()
+                .map(f -> new McpToolSummaryResp(f.getToolName(), f.getToolDescription()))
+                .toList();
+    }
+
+    public interface GlobalFunction{
+        ToolCallback getFunctionCallTool(ToolSession toolSession);
+
+        /**
+         * 工具名称
+         */
+        String getToolName();
+
+        /**
+         * 工具描述
+         */
+        String getToolDescription();
+    }
+}
