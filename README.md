@@ -30,3 +30,9 @@ python3 backend.py stop
 
 `stop` gửi yêu cầu dừng hai server Java và hai worker; giữ MySQL/Redis chạy vì
 container có thể được dùng chung. Log của từng dịch vụ nằm trong `.local/`.
+
+## Nghe nhạc cho robot
+
+Công cụ `get_playlist` và `play_music` tìm tên bài và link audio trên backend,
+rồi gọi MCP trên Android để phát nhạc trên nền mặt robot, kèm hiệu ứng và điều khiển.
+Xem [cấu hình và sử dụng](docs/MUSIC_TOOLS_VI.md).

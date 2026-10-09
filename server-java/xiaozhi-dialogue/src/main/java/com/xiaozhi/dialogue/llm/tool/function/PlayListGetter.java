@@ -1,54 +1,41 @@
 package com.xiaozhi.dialogue.llm.tool.function;
 
-import com.xiaozhi.common.config.RuntimePathConfig;
 import com.xiaozhi.ai.tool.ToolsGlobalRegistry;
 import com.xiaozhi.ai.tool.session.ToolSession;
-import jakarta.annotation.Resource;
+import com.xiaozhi.dialogue.llm.tool.media.LocalMusicLibrary;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
-import lombok.extern.slf4j.Slf4j;
-
-@Slf4j
-// @Component
+@Component
 public class PlayListGetter implements ToolsGlobalRegistry.GlobalFunction {
     public static final String TOOL_NAME = "get_playlist";
-    private static final int MAX_PLAYLIST_CHARS = 2000;
+    private final LocalMusicLibrary library;
+    public PlayListGetter(LocalMusicLibrary library) { this.library = library; }
 
-    @Resource
-    private RuntimePathConfig runtimePathConfig;
-
-    @Tool(name = TOOL_NAME, description = "获取可播放的歌曲列表",returnDirect = false)
-    public String getPlayList() {
+    @Tool(name = TOOL_NAME, description = "Liệt kê hoặc tìm bài hát trong thư viện nhạc của robot. Tìm không phân biệt dấu tiếng Việt; dùng tên kết quả để gọi play_music.")
+    public String getPlayList(@ToolParam(required = false, description = "Tên bài hoặc ca sĩ; bỏ trống để liệt kê") String query) {
         try {
-            Path playlistPath = Path.of(runtimePathConfig.getMusicDir(), "playlist.txt");
-            String playlist = Files.readString(playlistPath);
-            // 整份列表会进 LLM 上下文，超长截断
-            return playlist.length() > MAX_PLAYLIST_CHARS ? playlist.substring(0, MAX_PLAYLIST_CHARS) : playlist;
+            var tracks = library.search(query);
+            if (tracks.isEmpty()) return "Không tìm thấy bài hát trong thư viện nhạc.";
+            StringBuilder result = new StringBuilder("Bài hát có thể phát:\n");
+            int count = 0;
+            for (var track : tracks) {
+                if (count == 30 || result.length() + track.fileName().length() + track.artist().length() + 6 > 1900) break;
+                result.append("- ").append(track.fileName()).append(track.artist().isBlank() ? "" : " - " + track.artist()).append('\n');
+                count++;
+            }
+            if (count < tracks.size()) result.append("Còn bài khác; hãy tìm bằng tên bài hoặc ca sĩ.");
+            return result.toString();
         } catch (IOException e) {
-            return "目前没有可播放的歌曲列表";
+            return "Không đọc được thư viện nhạc. Hãy kiểm tra thư mục nhạc trên backend.";
         }
     }
 
-    @Override
-    public ToolCallback getFunctionCallTool(ToolSession toolSession) {
-        ToolCallback[] tools = ToolCallbacks.from(this);
-        return tools[0];
-    }
-
-    @Override
-    public String getToolName() {
-        return TOOL_NAME;
-    }
-
-    @Override
-    public String getToolDescription() {
-        return "获取歌曲列表";
-    }
+    @Override public ToolCallback getFunctionCallTool(ToolSession session) { return ToolCallbacks.from(this)[0]; }
+    @Override public String getToolName() { return TOOL_NAME; }
+    @Override public String getToolDescription() { return "Tìm và liệt kê bài hát"; }
 }

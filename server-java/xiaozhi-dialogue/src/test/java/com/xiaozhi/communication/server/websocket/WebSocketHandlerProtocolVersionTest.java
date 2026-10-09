@@ -54,6 +54,39 @@ class WebSocketHandlerProtocolVersionTest {
     }
 
     @Test
+    void musicPlaybackKeepsRegisteredMusicSessionAlive() throws Exception {
+        chatSession.getDevice().setRoleId(1);
+        var holder = org.mockito.Mockito.mock(com.xiaozhi.ai.tool.ToolsSessionHolder.class);
+        chatSession.setToolsSessionHolder(holder);
+        org.mockito.Mockito.when(holder.getFunction("self_music_play"))
+                .thenReturn(org.mockito.Mockito.mock(org.springframework.ai.tool.ToolCallback.class));
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"music_playback\",\"state\":\"playing\"}"));
+        verify(sessionManager).updateLastActivity(SESSION_ID);
+        org.mockito.Mockito.verifyNoInteractions(messageHandler);
+    }
+
+    @Test
+    void missingMusicToolDoesNotExtendSession() throws Exception {
+        chatSession.getDevice().setRoleId(1);
+        chatSession.setToolsSessionHolder(org.mockito.Mockito.mock(com.xiaozhi.ai.tool.ToolsSessionHolder.class));
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"music_playback\",\"state\":\"playing\"}"));
+        org.mockito.Mockito.verify(sessionManager, org.mockito.Mockito.never()).updateLastActivity(SESSION_ID);
+        org.mockito.Mockito.verifyNoInteractions(messageHandler);
+    }
+
+    @Test
+    void inactiveMusicDoesNotExtendSession() throws Exception {
+        chatSession.getDevice().setRoleId(1);
+        var holder = org.mockito.Mockito.mock(com.xiaozhi.ai.tool.ToolsSessionHolder.class);
+        chatSession.setToolsSessionHolder(holder);
+        org.mockito.Mockito.when(holder.getFunction("self_music_play"))
+                .thenReturn(org.mockito.Mockito.mock(org.springframework.ai.tool.ToolCallback.class));
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"music_playback\",\"state\":\"idle\"}"));
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"music_playback\"}"));
+        org.mockito.Mockito.verify(sessionManager, org.mockito.Mockito.never()).updateLastActivity(SESSION_ID);
+    }
+
+    @Test
     void helloWithVersionSetsSessionProtocolAndEchoesIt() throws Exception {
         handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"hello\",\"version\":2}"));
 

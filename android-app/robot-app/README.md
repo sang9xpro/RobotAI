@@ -9,6 +9,7 @@ Bản `0.2-companion-preview` có các tab Ken, Hội thoại, Thị giác, Ti�
 - Đồng hồ, nhắc việc lưu theo tài khoản và khôi phục sau restart; thời tiết thật qua backend/Open-Meteo.
 - Xem/sửa/xóa bản tóm tắt ký ức theo user/role. Xóa tóm tắt không xóa lịch sử gốc.
 - Cổng MCP `self.robot.action` và telemetry mô phỏng, kiểm quyền, tuổi lệnh, replay và watchdog trước khi chấp nhận hành động. Chưa có transport ESP32 thật.
+- MCP nhạc chạy trên Android: backend chọn bài và từ khóa; với YouTube, app tự tìm/chọn video và phát trong player hiển thị, còn MP3 dùng MediaPlayer riêng. Mặt Ken và đế robot có hiệu ứng, tạm dừng/phát tiếp và dừng nhạc. Xem [MCP nghe nhạc](../../docs/MUSIC_TOOLS_VI.md).
 
 App cần Android 9 trở lên và chạy foreground. Gọi tên bằng SpeechRecognizer local cần Android 12 trở lên và gói nhận dạng phù hợp. Nhắc việc không dùng exact alarm nên có thể trễ trong Doze. Hướng nhìn hiện là vị trí mặt/góc đầu, chưa phải eye tracking.
 

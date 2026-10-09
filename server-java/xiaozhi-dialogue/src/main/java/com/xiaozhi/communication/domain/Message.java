@@ -21,11 +21,12 @@ import jakarta.validation.constraints.NotNull;
         @JsonSubTypes.Type(value = AbortMessage.class, name = "abort"),
         @JsonSubTypes.Type(value = GoodbyeMessage.class, name = "goodbye"),
         @JsonSubTypes.Type(value = PingMessage.class, name = "ping"),
+        @JsonSubTypes.Type(value = MusicPlaybackMessage.class, name = "music_playback"),
         @JsonSubTypes.Type(value = UnknownMessage.class, name = "unknown")
 })
 public sealed abstract class Message
         permits AbortMessage, GoodbyeMessage, HelloMessage, IotMessage, ListenMessage, DeviceMcpMessage,
-                PingMessage, UnknownMessage {
+                PingMessage, MusicPlaybackMessage, UnknownMessage {
 
     public Message() {
         this.type = "unknown";

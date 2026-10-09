@@ -133,11 +133,11 @@ public class DeviceMcpService {
                 "name", toolName,
                 "arguments", args != null ? args : Map.of()
         ));
-        if ("self.robot.action".equals(toolName)) {
+        if ("self.robot.action".equals(toolName) || "self.music.play".equals(toolName) || "self.music.search".equals(toolName)) {
             var bounded = new LinkedHashMap<String, Object>(args != null ? args : Map.of());
             long now = com.xiaozhi.utils.DateUtils.millis();
             bounded.put("issued_at_ms", now);
-            bounded.put("expires_at_ms", now + 1000);
+            bounded.put("expires_at_ms", now + (toolName.startsWith("self.music.") ? 5000 : 1000));
             payload.setParams(Map.of("name", toolName, "arguments", bounded));
         }
         request.setPayload(payload);
@@ -264,10 +264,10 @@ public class DeviceMcpService {
                         reqPayload.setMethod("tools/call");
                         reqPayload.setId(chatSession.getDeviceMcpHolder().getMcpRequestId());
                         var proposal = new LinkedHashMap<String, Object>(params);
-                        if ("self.robot.action".equals(name)) {
+                        if ("self.robot.action".equals(name) || "self.music.play".equals(name) || "self.music.search".equals(name)) {
                         long now = com.xiaozhi.utils.DateUtils.millis();
                             proposal.put("issued_at_ms", now);
-                            proposal.put("expires_at_ms", now + 1000);
+                            proposal.put("expires_at_ms", now + (name.startsWith("self.music.") ? 5000 : 1000));
                         }
                         reqPayload.setParams(Map.of("name", name, "arguments", proposal));
                         req.setPayload(reqPayload);

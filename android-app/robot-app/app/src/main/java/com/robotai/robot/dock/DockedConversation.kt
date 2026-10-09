@@ -37,6 +37,7 @@ import kotlin.math.min
 fun DockedConversation(vm: RobotViewModel, session: UserSession, roleId: Int?, gaze: Float, onExit: () -> Unit,
     loving: Boolean = false, happy: Boolean = false) {
     val state by vm.state.collectAsState()
+    val music by vm.music.collectAsState()
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     var resumed by remember { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
@@ -88,7 +89,8 @@ fun DockedConversation(vm: RobotViewModel, session: UserSession, roleId: Int?, g
                 vm.interaction()
                 if (state.phase == Phase.SLEEPING && roleId != null && allowed) vm.wake()
                 controls = !controls; touch++
-            }, loving = loving, happy = happy)
+            }, loving = loving, happy = happy, musicPlaying = music.phase == "playing")
+        com.robotai.robot.companion.MusicPanel(music, vm::pauseMusic, vm::stopMusic, Modifier.align(Alignment.TopEnd).width(270.dp).padding(12.dp), vm::attachYouTube, vm::detachYouTube)
         if (controls || needsHelp) {
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xe6030909))
                 .navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -120,7 +122,7 @@ fun DockedConversation(vm: RobotViewModel, session: UserSession, roleId: Int?, g
 
 /** Soft asymmetric cyan eyes and a small mouth, scaled for a landscape phone on its stand. */
 @Composable
-fun DockFace(phase: Phase, gaze: Float, modifier: Modifier = Modifier, loving: Boolean = false, happy: Boolean = false) {
+fun DockFace(phase: Phase, gaze: Float, modifier: Modifier = Modifier, loving: Boolean = false, happy: Boolean = false, musicPlaying: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "dock-face")
     val blink by transition.animateFloat(1f, .07f,
         infiniteRepeatable(keyframes { durationMillis = 4800; 1f at 0; 1f at 4220; .07f at 4350; 1f at 4500 }), label = "dock-blink")
@@ -131,8 +133,8 @@ fun DockFace(phase: Phase, gaze: Float, modifier: Modifier = Modifier, loving: B
         val w = unit * .36f
         val h = unit * .43f * if (phase == Phase.SLEEPING) .06f else blink
         val cx = size.width / 2 + look * unit * .045f
-        val cy = size.height * .46f
-        val cyan = if (phase == Phase.SLEEPING) Color(0xff28565e) else Color(0xff55e1f3)
+        val cy = size.height * .46f + if (musicPlaying) (speech - .925f) * unit * .25f else 0f
+        val cyan = if (musicPlaying) lerp(Color(0xff67e8dc), Color(0xffee85d5), (speech - .85f) / .15f) else if (phase == Phase.SLEEPING) Color(0xff28565e) else Color(0xff55e1f3)
         for (side in listOf(-1, 1)) {
             val left = cx + side * unit * .30f - w / 2
             val top = cy - h / 2
@@ -164,7 +166,7 @@ fun DockFace(phase: Phase, gaze: Float, modifier: Modifier = Modifier, loving: B
             quadraticBezierTo(cx + unit * .018f, mouthY + unit * .015f,
                 cx + unit * .025f, mouthY + unit * if (phase == Phase.SPEAKING) .045f * speech else .026f)
         }
-        if (happy && phase != Phase.SLEEPING) {
+        if ((happy || musicPlaying) && phase != Phase.SLEEPING) {
             drawArc(cyan, 10f, 160f, false, Offset(cx - unit * .08f, mouthY - unit * .03f),
                 androidx.compose.ui.geometry.Size(unit * .16f, unit * .08f), style = Stroke(unit * .012f, cap = StrokeCap.Round))
         } else drawPath(mouth, cyan, style = Stroke(unit * .012f, cap = StrokeCap.Round, join = StrokeJoin.Round))

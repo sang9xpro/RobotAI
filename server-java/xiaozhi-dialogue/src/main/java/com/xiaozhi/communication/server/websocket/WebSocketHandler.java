@@ -92,6 +92,15 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
             }
             if (msg instanceof HelloMessage m) {
                 handleHelloMessage(session, m);
+            } else if (msg instanceof MusicPlaybackMessage m) {
+                if (chatSession != null && device != null && device.getRoleId() != null
+                        && chatSession.getToolsSessionHolder() != null
+                        && chatSession.getToolsSessionHolder().getFunction("self_music_play") != null
+                        && m.getState() != null
+                        && java.util.List.of("loading", "playing", "paused").contains(m.getState())) {
+                    sessionManager.updateLastActivity(sessionId);
+                }
+                return;
             } else if (msg instanceof PingMessage || msg instanceof UnknownMessage) {
                 // 保活报文/未识别的 type：不进设备绑定、不进业务分发、不回应答
                 return;

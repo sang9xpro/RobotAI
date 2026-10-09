@@ -30,6 +30,8 @@ class SocketBackend : BackendPort {
         })
     }
     override fun sendText(text: String) = socket?.send(text) == true
+    fun reportMusic(state: String): Boolean = state in listOf("loading", "playing", "paused") &&
+        sendText(org.json.JSONObject().put("type", "music_playback").put("state", state).toString())
     override fun sendAudio(audio: ByteArray): Boolean {
         val ws = socket ?: return false
         // Opus bitrate 24 kbps: ~3 KB/s. Never allow seconds of stale upload to collect.

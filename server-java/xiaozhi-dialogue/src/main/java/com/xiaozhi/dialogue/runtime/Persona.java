@@ -204,7 +204,15 @@ public class Persona {
             List<Message> messages = conversation.messages(ctx);
             Prompt prompt = new Prompt(messages, chatOptions);
 
-            Flux<ChatResponse> chatFlux = chatModel.stream(prompt)
+            var musicReply = useFunctionCall
+                    ? com.xiaozhi.dialogue.llm.tool.media.MusicCommandRouter.route(
+                            turn.userMessage.getText(), currentSession.getToolsSessionHolder(),
+                            new org.springframework.ai.chat.model.ToolContext(java.util.Map.of(TOOL_CONTEXT_SESSION_ID_KEY, sessionId)))
+                    : java.util.Optional.<String>empty();
+            Flux<ChatResponse> chatFlux = (musicReply.isPresent()
+                    ? Flux.just(new ChatResponse(List.of(new org.springframework.ai.chat.model.Generation(
+                            new org.springframework.ai.chat.messages.AssistantMessage(musicReply.get())))))
+                    : chatModel.stream(prompt))
                 .doOnError(error -> {
                     listener.onError(error);
                     failTurn(turn);

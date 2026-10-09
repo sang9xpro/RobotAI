@@ -104,7 +104,7 @@ class HandsFreeAcceptanceTest {
                 assertTrue("No playback", states.any { it.phase == Phase.SPEAKING })
                 val transcript = end.caption.lowercase()
                 assertTrue("Wrong STT: $transcript", listOf("dung lượng", "lưu trữ", "ram", "bộ nhớ", "tính toán").count { it in transcript } >= 2)
-                assertTrue("Wrong response role: ${end.reply}", end.reply.startsWith("KENA"))
+                assertTrue("Wrong response role: ${end.reply}", end.reply.startsWith("Ken"))
                 assertTrue(end.uploaded > 0 && end.downloaded > 0)
                 report.getJSONArray("turns").put(JSONObject().put("caption", end.caption).put("reply", end.reply)
                     .put("uplink", end.uploaded).put("downlink", end.downloaded).put("latencyMs", end.latencyMs)

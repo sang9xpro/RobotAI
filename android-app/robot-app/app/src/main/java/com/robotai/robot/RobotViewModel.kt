@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import java.net.URI
+import android.webkit.WebView
 
 class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val backend = SocketBackend()
@@ -21,7 +22,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private var voiceEnrollment: Job? = null
     fun enrollVoice(personId: String) {
         val controller=identityState.value ?: return
-        if(stopping || voiceEnrollment!=null || state.value.phase !in listOf(Phase.IDLE,Phase.INTERRUPTED,Phase.LISTENING)) return
+        if(music.value.active || stopping || voiceEnrollment!=null || state.value.phase !in listOf(Phase.IDLE,Phase.INTERRUPTED,Phase.LISTENING)) return
         if (state.value.phase == Phase.LISTENING) {
             guard.cancel()
             runCatching { control("abort", "reason" to "voice_enrollment") }
@@ -46,7 +47,49 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val mic = Microphone(viewModelScope)
     private val player = StreamPlayer(viewModelScope)
     private val guard = TurnGuard()
-    val robotTools = com.robotai.robot.companion.DeviceRobotTools()
+    private val musicPlayer = MusicPlayer(application)
+    private val youtubeSearch by lazy { YouTubeMusicSearch.from(application) }
+    private var youtubeSearchJob: Job? = null
+    val music = musicPlayer.state
+    private val musicTools = com.robotai.robot.companion.DeviceMusicTools(musicPlayer, ::playMusic).apply {
+        onYouTubeSearch = ::searchYouTube
+        onStop = ::stopMusic
+    }
+    val robotTools = com.robotai.robot.companion.DeviceRobotTools(musicTools)
+    private fun playMusic(title: String, artist: String, link: String) {
+        check(foreground && signedSession != null && state.value.connected) { "App phải ở foreground và đã kết nối" }
+        youtubeSearchJob?.cancel()
+        val session = signedSession!!
+        val source = MusicSource.resolve(session.baseUrl, session.token, link)
+        val videoId = YouTubeVideo.id(source.url)
+        if (videoId != null) musicPlayer.playYouTube(title, artist, videoId)
+        else musicPlayer.play(title, artist, source.url, source.headers)
+        timeout?.cancel()
+        interaction()
+        viewModelScope.launch { mic.stop() }
+    }
+    private fun searchYouTube(title: String, artist: String, query: String, videoUrl: String) {
+        check(foreground && signedSession != null && state.value.connected) { "App phải ở foreground và đã kết nối" }
+        youtubeSearchJob?.cancel()
+        musicPlayer.beginYouTubeSearch(title, artist)
+        timeout?.cancel()
+        interaction()
+        viewModelScope.launch { mic.stop() }
+        youtubeSearchJob = viewModelScope.launch {
+            try {
+                val video = withContext(Dispatchers.IO) { youtubeSearch.find(title, artist, query, videoUrl) }
+                musicPlayer.playYouTube(video.title, video.artist, video.videoId)
+            } catch (_: CancellationException) {
+                // A stop, disconnect or newer search has already replaced this request.
+            } catch (e: Exception) {
+                musicPlayer.stop(e.message ?: "Không tìm được video YouTube", error = true)
+            }
+        }
+    }
+    fun stopMusic() { youtubeSearchJob?.cancel(); youtubeSearchJob = null; musicPlayer.stop("Đã dừng nhạc"); interaction() }
+    fun pauseMusic() = musicPlayer.pauseOrResume()
+    fun attachYouTube(view: WebView) = musicPlayer.attachYouTube(view)
+    fun detachYouTube(view: WebView) = musicPlayer.detachYouTube(view)
     private val wakeWord: WakeWordPort = LocalWakeWord(application)
     private val mutable = MutableStateFlow(RobotUiState())
     val state = mutable.asStateFlow()
@@ -83,6 +126,13 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private var conversationEnabled = false
     private var foreground = true
     private val idle = ConversationIdle().apply { touch(SystemClock.elapsedRealtime()) }
+    init { viewModelScope.launch { music.collect { if (!it.active) interaction() } } }
+    init { viewModelScope.launch {
+        while (isActive) {
+            delay(15000)
+            if (foreground && state.value.connected && music.value.active) backend.reportMusic(music.value.phase)
+        }
+    } }
     private var resumeConversation = false
     var wakePhrase: String = "Ken"
         private set
@@ -101,7 +151,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             while (isActive) {
                 delay(250)
-                if (!foreground || !conversationEnabled || !awakeState.value || voiceEnrollment != null || stopping) continue
+                if (!foreground || !conversationEnabled || !awakeState.value || voiceEnrollment != null || stopping || music.value.active) continue
                 val phase = state.value.phase
                 if (idle.shouldSleep(SystemClock.elapsedRealtime(), phase)) {
                     sleep(wakePhrase, lastUrl)
@@ -165,7 +215,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun listen() {
-        if (!foreground || !hasMicrophonePermission() || voiceEnrollment!=null || !state.value.connected || stopping || state.value.phase !in listOf(Phase.IDLE, Phase.INTERRUPTED)) return
+        if (music.value.active || !foreground || !hasMicrophonePermission() || voiceEnrollment!=null || !state.value.connected || stopping || state.value.phase !in listOf(Phase.IDLE, Phase.INTERRUPTED)) return
         if (legacy && needsFreshTransport) {
             disconnect()
             val epoch = connection
@@ -234,6 +284,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun interrupt() {
+        stopMusic()
         if (!state.value.connected || state.value.phase in listOf(Phase.IDLE, Phase.INTERRUPTED, Phase.SLEEPING)) return
         player.stop()
         robotTools.stop()
@@ -330,7 +381,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (e.optString("type") == "mcp") {
                 if (e.optString("sessionId", e.optString("session_id")) != sid) return
-                robotTools.handle(e.getJSONObject("payload"), state.value.phase in listOf(Phase.FINALIZING, Phase.THINKING, Phase.SPEAKING))?.let { result ->
+                robotTools.handle(e.getJSONObject("payload"), foreground && state.value.phase in listOf(Phase.FINALIZING, Phase.THINKING, Phase.SPEAKING))?.let { result ->
                     backend.sendText(JSONObject().put("type", "mcp").put("sessionId", sid).put("payload", result).toString())
                 }
                 return
@@ -357,7 +408,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 "diagnostics" -> update { it.copy(serverFrames = e.getInt("uplink_frames"), decodedSamples = e.getInt("decoded_samples")) }
                 "tts" -> when (e.getString("state")) {
-                    "start" -> player.start({
+                    "start" -> { musicPlayer.duck(true); player.start({
                         if (guard.accepts(generation, turn)) {
                             val latency = if (finishTime != 0L) SystemClock.elapsedRealtime() - finishTime else null
                             update { it.copy(phase = Phase.SPEAKING, latencyMs = latency, message = if (legacy) "Đang phát phản hồi" else "Đang phát mẫu giọng Hải Đăng") }
@@ -367,13 +418,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                         if (guard.accepts(generation, turn)) {
                             timeout?.cancel()
                             recordCompletedTurn()
+                            musicPlayer.duck(false)
                             interaction()
                             needsFreshTransport = legacy
                             update { it.copy(phase = Phase.IDLE, message = "Phát xong · sẵn sàng lượt mới") }
                             if (!legacy) control("playback", "state" to "completed")
                             guard.cancel()
                         }
-                    }, { fail(it) })
+                    }, { fail(it) }) }
                     "sentence_start" -> update { it.copy(reply = (it.reply + " " + e.getString("text")).trim(), spokenSentence = e.getString("text")) }
                     "stop" -> if (!player.finish()) fail("Backend không tạo được tiếng trả lời; hãy thử lại")
                 }
@@ -399,7 +451,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         identityState.value?.close()
         wakeWord.stop()
-        robotTools.stop()
+        robotTools.reset()
         backend.close()
         player.stop()
         // ViewModel scope cancellation makes recorder exit and release in finally.

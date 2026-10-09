@@ -60,7 +60,7 @@ class RealVoiceAcceptanceTest {
         val s = vm.state.value
         assertTrue("Missing speech transcript: ${s.caption}",s.caption.count { it.isLetter() } >= 5)
         assertTrue("Wrong role/context: ${s.reply}",s.reply.startsWith(marker))
-        assertTrue("Mixed role markers",listOf("KENA","KENB","KENC").filter { it!=marker }.none { it in s.reply })
+        assertTrue("Mixed role markers",listOf("Ken","KENB","KENC").filter { it!=marker }.none { it in s.reply })
         assertTrue(s.uploaded > 0 && s.downloaded > 0)
         return JSONObject().put("latencyMs",s.latencyMs).put("caption",s.caption).put("reply",s.reply)
             .put("marker",marker).put("uplink",s.uploaded).put("downlink",s.downloaded)
@@ -85,7 +85,7 @@ class RealVoiceAcceptanceTest {
             waitFor(15000) { auth.state.value.session!=null && auth.state.value.roleId==role && vm.state.value.message=="Sẵn sàng kết nối" }
             main { vm.connect(session.socketUrl) }; waitFor(15000) { vm.state.value.connected }
             for (i in 0 until count) {
-                val marker=if (i<count/2 || count==1) "KENA" else "KENB"
+                val marker=if (i<count/2 || count==1) "Ken" else "KENB"
                 if (marker=="KENB" && role!=roles.getInt(1)) {
                     role=roles.getInt(1)
                     main { vm.disconnect();auth.selectRole(role) }
@@ -98,13 +98,13 @@ class RealVoiceAcceptanceTest {
             input(); waitFor { vm.state.value.phase==Phase.SPEAKING }; main { vm.interrupt() }
             waitFor(15000) { vm.state.value.connected && vm.state.value.phase==Phase.IDLE }
             assertEquals(0,vm.state.value.downloaded)
-            input(); report.put("afterAbort",completed(if(role==roles.getInt(0)) "KENA" else "KENB"))
+            input(); report.put("afterAbort",completed(if(role==roles.getInt(0)) "Ken" else "KENB"))
             main { vm.disconnect(); vm.connect("ws://127.0.0.1:1/ws/xiaozhi/v1/") }
             val deadline=SystemClock.elapsedRealtime()+15000
             while(SystemClock.elapsedRealtime()<deadline && vm.state.value.phase!=Phase.ERROR) Thread.sleep(25)
             assertEquals(Phase.ERROR,vm.state.value.phase); report.put("networkFailure","unavailable TCP endpoint")
             main { vm.connect(session.socketUrl) }; waitFor(15000) { vm.state.value.connected }
-            input(); report.put("afterNetwork",completed(if(role==roles.getInt(0)) "KENA" else "KENB"))
+            input(); report.put("afterNetwork",completed(if(role==roles.getInt(0)) "Ken" else "KENB"))
             main { vm.disconnect();auth.logout() }
             waitFor(15000) { auth.state.value.session==null && vm.state.value.message=="Chưa đăng nhập" }
             val revokedEnd=SystemClock.elapsedRealtime()+15000

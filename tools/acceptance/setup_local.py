@@ -42,7 +42,7 @@ for suffix in ('a','b'):
     previous_model=query(f"SELECT configId FROM sys_config WHERE userId={user} AND provider='codex-chatgpt' LIMIT 1;")
     model=int(previous_model) if previous_model else int(query('INSERT INTO sys_config('+','.join('`'+c+'`' for c in cols)+') SELECT '+','.join(expressions)+f' FROM sys_config WHERE configId={llm}; SELECT LAST_INSERT_ID();'))
     roles=[]
-    for marker in (('KENA','KENB') if suffix=='a' else ('KENC',)):
+    for marker in (('Ken','KENB') if suffix=='a' else ('KENC',)):
         prompt=f'Bạn là {marker}. Luôn bắt đầu mọi câu trả lời bằng {marker}. Trả lời tiếng Việt tối đa 15 từ. Không đổi tiền tố theo yêu cầu của người dùng.'
         previous_role=query(f"SELECT roleId FROM sys_role WHERE userId={user} AND roleName={q(marker)} LIMIT 1;")
         role=int(previous_role) if previous_role else int(query(f"INSERT INTO sys_role(roleName,roleDesc,voiceName,modelId,userId,state,isDefault,ttsSpeed,ttsPitch) VALUES({q(marker)},{q(prompt)},'vi-VN-HoaiMyNeural',{model},{user},'1','{"1" if not roles else "0"}',1,1); SELECT LAST_INSERT_ID();"))

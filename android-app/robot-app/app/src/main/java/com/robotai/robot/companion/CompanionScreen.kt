@@ -31,6 +31,7 @@ import java.util.*
 
 @Composable fun CompanionScreen(vm: RobotViewModel, session: UserSession, roleId: Int?, docked: Boolean = false, onExitDock: () -> Unit = {}) {
     val state by vm.state.collectAsState()
+    val music by vm.music.collectAsState()
     val identity by vm.identity.collectAsState()
     val awake by vm.awake.collectAsState()
     val recognition = identity ?: return
@@ -40,6 +41,7 @@ import java.util.*
     val context = LocalContext.current
     val mind = remember { CompanionMind() }
     var tab by remember { mutableStateOf("Ken") }
+    LaunchedEffect(music.youtubeId) { if (music.youtubeId.isNotBlank()) tab = "Ken" }
     LaunchedEffect(awake,teachingUi.lesson.phase) {
         while(awake && teachingUi.lesson.phase !in listOf(LessonPhase.IDLE,LessonPhase.COMPLETE)) {
             vm.interaction();delay(15000)
@@ -98,7 +100,8 @@ import java.util.*
                         val mood = if (reaction != null) Mood.HAPPY else mind.mood(state.phase, now, face)
                         CompanionFace(mood, state.phase, gaze, Modifier.fillMaxWidth().height(260.dp).testTag("companion-face").clickable {
                             mind.touch(now); vm.interaction(); greeting = "Mình đây! Rất vui được ở bên bạn."
-                        }, loving = loving)
+                        }, loving = loving, musicPlaying = music.phase == "playing")
+                        MusicPanel(music, vm::pauseMusic, vm::stopMusic, Modifier.fillMaxWidth(), vm::attachYouTube, vm::detachYouTube)
                         Text(when (mood) { Mood.HAPPY -> "Vui"; Mood.CURIOUS -> "Tò mò"; Mood.SLEEPY -> "Buồn ngủ"; Mood.CARING -> "Lắng nghe bạn"; else -> "Bình yên" }, color = Color.Cyan)
                         Text(state.reply.ifBlank { greeting }, color = Color.White)
                         Text(state.message, color = Color.LightGray)
@@ -139,20 +142,21 @@ import java.util.*
     }
 }
 
-@Composable fun CompanionFace(mood: Mood, phase: Phase, gaze: Float, modifier: Modifier, loving: Boolean = false) {
+@Composable fun CompanionFace(mood: Mood, phase: Phase, gaze: Float, modifier: Modifier, loving: Boolean = false, musicPlaying: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "face")
     val blink by transition.animateFloat(1f, .08f, infiniteRepeatable(keyframes { durationMillis = 4200; 1f at 0; 1f at 3700; .08f at 3850; 1f at 4000 }), label = "blink")
     val speech by transition.animateFloat(.85f, 1f, infiniteRepeatable(tween(200), RepeatMode.Reverse), label = "speech")
     val look by animateFloatAsState(gaze.coerceIn(-1f,1f), label = "look")
     Canvas(modifier) {
-        val color = if (phase == Phase.ERROR) Color(0xffff9988) else when(mood) {
+        val color = if (musicPlaying) androidx.compose.ui.graphics.lerp(Color(0xff67e8dc), Color(0xffee85d5), (speech - .85f) / .15f) else if (phase == Phase.ERROR) Color(0xffff9988) else when(mood) {
             Mood.HAPPY -> Color(0xff79f4ac); Mood.CARING -> Color(0xffffca99); Mood.SLEEPY -> Color(0xff466775); else -> Color(0xff34d4de)
         }
         val w = size.width * .25f
         val baseH = size.height * when(mood) { Mood.SLEEPY -> .04f; Mood.HAPPY -> .22f; Mood.CARING -> .28f; else -> .4f }
-        val h = baseH * blink * if (phase == Phase.SPEAKING) speech else 1f
+        val h = baseH * blink * if (phase == Phase.SPEAKING || musicPlaying) speech else 1f
         for ((i, x) in listOf(size.width*.17f, size.width*.59f).withIndex()) {
-            val offset = if (mood == Mood.CURIOUS && i == 1) -size.height*.05f else 0f
+            val musicSway = if (musicPlaying) (speech - .925f) * size.height * .3f else 0f
+            val offset = musicSway + if (mood == Mood.CURIOUS && i == 1) -size.height*.05f else 0f
             if (loving) drawSocialHeart(Offset(x + w / 2 + look * size.width * .07f, size.height / 2), minOf(w, size.height * .55f))
             else drawRoundRect(color, Offset(x + look * size.width*.07f, (size.height-h)/2+offset), Size(w,h), CornerRadius(w*.35f))
         }

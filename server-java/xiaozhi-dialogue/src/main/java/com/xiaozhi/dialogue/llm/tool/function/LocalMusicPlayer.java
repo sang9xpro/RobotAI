@@ -1,99 +1,62 @@
 package com.xiaozhi.dialogue.llm.tool.function;
 
-import com.xiaozhi.common.config.RuntimePathConfig;
-import com.xiaozhi.communication.common.ChatSession;
 import com.xiaozhi.communication.common.SessionManager;
 import com.xiaozhi.ai.tool.ToolsGlobalRegistry;
 import com.xiaozhi.ai.tool.session.ToolSession;
 import com.xiaozhi.dialogue.runtime.Persona;
-import jakarta.annotation.Resource;
+import com.xiaozhi.dialogue.llm.tool.media.LocalMusicLibrary;
+import com.xiaozhi.dialogue.llm.tool.mcp.device.DeviceMcpService;
+import java.util.Map;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-// @Component
+@Component
 public class LocalMusicPlayer implements ToolsGlobalRegistry.GlobalFunction {
     public static final String TOOL_NAME = "play_music";
-    private static final String MUSIC_SUFFIX = ".mp3";
+    private final SessionManager sessions;
+    private final LocalMusicLibrary library;
+    private final DeviceMcpService deviceMcp;
+    public LocalMusicPlayer(SessionManager sessions, LocalMusicLibrary library, DeviceMcpService deviceMcp) {
+        this.sessions = sessions;
+        this.library = library;
+        this.deviceMcp = deviceMcp;
+    }
 
-    // 使用虚拟线程执行器处理定时任务
-    private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(
-            Runtime.getRuntime().availableProcessors(),
-            Thread.ofVirtual().name("music-scheduler-", 0).factory());
-
-    @Resource
-    private SessionManager sessionManager;
-
-    @Resource
-    private RuntimePathConfig runtimePathConfig;
-
-    @Tool(name = TOOL_NAME, description = "音乐播放器,播放指定名称的歌曲", returnDirect = true)
-    public String playMusic(@ToolParam(description = "要播放的歌曲名称") String songName, ToolContext toolContext) {
-        String sessionId = (String) toolContext.getContext().get(Persona.TOOL_CONTEXT_SESSION_ID_KEY);
-        ChatSession chatSession = sessionManager.getSession(sessionId);
-        if (chatSession == null || chatSession.getPlayer() == null) {
-            return "音乐播放失败";
-        }
-        if (songName == null || songName.isEmpty()) {
-            return "你没有告诉我具体的歌曲名称，我播放不了！";
-        }
-
+    @Tool(name = TOOL_NAME, description = "Tìm bài hát và link audio trong thư viện rồi gọi MCP self.music.play trên app Android. Backend không giải mã hoặc phát nhạc. Nếu không rõ tên, gọi get_playlist trước. Chỉ phát khi tìm được duy nhất một bài.", returnDirect = true)
+    public String playMusic(@ToolParam(description = "Tên bài hoặc tên file MP3; để trống khi người dùng muốn nghe một bài bất kỳ", required = false) String songName, ToolContext context) {
+        Object sessionId = context == null ? null : context.getContext().get(Persona.TOOL_CONTEXT_SESSION_ID_KEY);
+        var session = sessionId instanceof String id ? sessions.getSession(id) : null;
+        if (session == null || session.getDevice() == null) return "Chưa có kết nối âm thanh với robot.";
+        if (session.getToolsSessionHolder() == null || session.getToolsSessionHolder().getFunction("self_music_play") == null)
+            return "App chưa có MCP nghe nhạc hoặc công cụ đang bị tắt. Hãy cập nhật app và kết nối lại.";
         try {
-            Path musicFile = resolveMusicFile(songName);
-            if (musicFile == null) {
-                return "我这里没有《" + songName + "》这首歌";
+            boolean anySong = songName == null || songName.isBlank();
+            var matches = anySong ? library.search("").stream().limit(1).toList() : library.resolve(songName);
+            if (matches.isEmpty()) {
+                var available = library.search("").stream().limit(5).map(LocalMusicLibrary.Track::title).toList();
+                return available.isEmpty()
+                        ? "Thư viện chưa có bài MP3 nào. Hãy thêm MP3 hoặc link audio vào thư viện để tôi phát."
+                        : "Không tìm thấy bài này trong thư viện MP3 hiện tại. Tôi có thể phát: " + String.join(", ", available) + ".";
             }
-            scheduler.schedule(() -> {
-                // 必须异步处理，也就是先返回一个回应用户的字符串，再开始播放。
-                chatSession.getPlayer().play(songName, musicFile);
-            }, 60, TimeUnit.MILLISECONDS);
-            return "尝试播放歌曲《" + songName + "》";
-
+            if (matches.size() > 1) return "Có nhiều bài phù hợp. Hãy chọn tên chính xác từ get_playlist trước khi phát.";
+            var track = matches.getFirst();
+            var result = deviceMcp.callDeviceTool(session.getDevice().getDeviceId(), "self.music.play",
+                    Map.of("title", track.title(), "artist", track.artist(), "url", track.url()));
+            if (Boolean.TRUE.equals(result.get("isError"))) return "App từ chối phát nhạc: " + result.get("content");
+            return "Đã gửi bài “" + track.title() + "” tới app. App đang tải nhạc để phát trên loa điện thoại.";
         } catch (Exception e) {
-            log.error("device 音乐播放异常，song name: {}", songName, e);
-            return "音乐播放失败";
+            log.warn("Cannot play local music for session {}", sessionId, e);
+            return "Không phát được bài hát. Hãy kiểm tra file MP3 và kết nối với app Android.";
         }
     }
 
-    /**
-     * 歌名解析到音乐目录下的 mp3 文件。歌名可能已带 .mp3（来自歌曲列表），
-     * 解析结果必须仍在音乐目录内，文件不存在返回 null。
-     */
-    private Path resolveMusicFile(String songName) {
-        String fileName = songName.endsWith(MUSIC_SUFFIX) ? songName : songName + MUSIC_SUFFIX;
-        Path musicDir = runtimePathConfig.resolveMusicDir();
-        Path musicFile = musicDir.resolve(fileName).normalize();
-        if (!musicFile.startsWith(musicDir) || !Files.isRegularFile(musicFile)) {
-            return null;
-        }
-        return musicFile;
-    }
-
-    @Override
-    public ToolCallback getFunctionCallTool(ToolSession toolSession) {
-        ToolCallback[] tools = ToolCallbacks.from(this);
-        return tools[0];
-    }
-
-    @Override
-    public String getToolName() {
-        return TOOL_NAME;
-    }
-
-    @Override
-    public String getToolDescription() {
-        return "播放音乐";
-    }
+    @Override public ToolCallback getFunctionCallTool(ToolSession session) { return ToolCallbacks.from(this)[0]; }
+    @Override public String getToolName() { return TOOL_NAME; }
+    @Override public String getToolDescription() { return "Phát nhạc qua loa robot"; }
 }
