@@ -57,14 +57,18 @@ public class FileSynthesizer extends Synthesizer {
      * @param reply 是否本轮 LLM 回复，决定播放器是否把句子计入打断截断
      */
     private void synthesize(Flux<String> stringFlux, boolean reply) {
+        var transport=chatSession.getDialogueContext().getConversationTransport();
+        long transportTurn=transport.capture();
         llmDisposable = new SentenceHelper().convert(stringFlux).subscribe(
             result -> {
+                if(transport.enabled() && !transport.isCurrent(transportTurn)) return;
+                transport.bind(transportTurn, () -> {
                 String text = result.text();
                 String mood = result.mood();
                 Flux<Speech> lazyTtsFlux = Flux.create(sink -> {
                     try {
                         Path audioPath = ttsService.textToSpeech(text);
-                        if (audioPath != null) {
+                        if (audioPath != null && (!transport.enabled() || transport.isCurrent(transportTurn)) && !sink.isCancelled()) {
                             // 分块读取PCM，避免全量加载进内存
                             List<byte[]> chunks = AudioUtils.readAsPcmChunks(audioPath.toString());
                             boolean first = true;
@@ -83,7 +87,8 @@ public class FileSynthesizer extends Synthesizer {
                     }
                     sink.complete();
                 });
-                player.play(lazyTtsFlux, reply);
+                if(!transport.enabled() || transport.isCurrent(transportTurn)) player.play(lazyTtsFlux, reply);
+                }).run();
             },
             // 上游分句流出错时接住，否则 Reactor 会把异常丢回 LLM 的投递线程
             error -> log.error("分句流异常，本轮TTS合成中止 - SessionId: {}", chatSession.getSessionId(), error));

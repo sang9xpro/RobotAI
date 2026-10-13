@@ -41,6 +41,7 @@ public class MessageMetadataBO {
     private String emotion;
 
     private SpeakerHint speaker;
+    private ListeningContext listeningContext;
 
     /**
      * 情绪置信度 [0,1]，仅情感识别时有值。

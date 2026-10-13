@@ -8,15 +8,42 @@ import { useRequest } from '@/composables/useRequest'
 import TableEmptyState from '@/components/TableEmptyState.vue'
 import { queryAuthRoles } from '@/services/authRole'
 import { useLoadingStore } from '@/store/loading'
-import { queryUsers } from '@/services/user'
+import { queryUsers, updateUserState } from '@/services/user'
+import { useUserStore } from '@/store/user'
+import { useConfirm } from '@/composables/useConfirm'
+import AdminUserDialog from '@/components/AdminUserDialog.vue'
+import UserDevicesDialog from '@/components/UserDevicesDialog.vue'
 import { useAvatar } from '@/composables/useAvatar'
 import type { AuthRole } from '@/types/authRole'
 import type { User, UserQueryParams } from '@/types/user'
+import { authRoleDisplayName } from '@/utils/accessControlLabels'
 import dayjs from 'dayjs'
 
 const { t } = useI18n()
 const { getAvatarUrl } = useAvatar()
 const { exporting, exportToCSV } = useExport()
+const userStore = useUserStore()
+const { confirmAsync } = useConfirm()
+const { executeOk: executeState } = useRequest()
+const changingState = ref<number>()
+const editorVisible = ref(false)
+const editingUser = ref<User | null>(null)
+const devicesVisible = ref(false)
+const selectedUser = ref<User | null>(null)
+function openEditor(user: User | null = null) { editingUser.value = user; editorVisible.value = true }
+function openDevices(user: User) { selectedUser.value = user; devicesVisible.value = true }
+async function changeState(user: User) {
+  if (user.userId === userStore.userInfo?.userId || changingState.value !== undefined) return
+  const state = user.state === '1' ? '0' : '1'
+  if (!await confirmAsync({ title: state === '0' ? t('robotai.disableUser') : t('robotai.enableUser'),
+    content: state === '0' ? t('robotai.disableUserHint') : t('robotai.enableUserHint') })) return
+  changingState.value = user.userId
+  try {
+    await executeState(() => updateUserState(user.userId, state), {
+      showSuccess: true, successText: t('common.updateSuccess'), onSuccess: () => fetchData(),
+    })
+  } finally { changingState.value = undefined }
+}
 
 // 表格和分页：分页参数由 useTable 注入，查询条件走 buildQueryParams
 const {
@@ -33,6 +60,10 @@ const {
 // 全局 Loading
 const loadingStore = useLoadingStore()
 const authRoleOptions = ref<AuthRole[]>([])
+function userAuthRoleName(user: User) {
+  const role = authRoleOptions.value.find((item) => item.authRoleId === user.authRoleId)
+  return role ? authRoleDisplayName({ ...role, authRoleName: user.authRoleName || role.authRoleName }, t) : user.authRoleName || '-'
+}
 const { execute: executeAuthRoles } = useRequest()
 
 // 查询表单
@@ -52,6 +83,7 @@ const queryFilters = computed(() => [
 
 // 表格列配置
 const columns = computed<TableColumnsType>(() => [
+  { title: t('user.username'), dataIndex: 'username', width: 160, fixed: 'left', align: 'center' },
   {
     title: t('common.name'),
     dataIndex: 'name',
@@ -126,6 +158,7 @@ const columns = computed<TableColumnsType>(() => [
     width: 150,
     align: 'center'
   },
+  { title: t('table.action'), dataIndex: 'operation', width: 260, fixed: 'right', align: 'center' },
 ])
 
 // 后端 BasePageReq 限制每页最多 1000 条
@@ -204,7 +237,7 @@ async function handleExport() {
           title: t('user.accountType'),
           format: (val) => val === '1' ? t('user.admin') : t('user.normalUser')
         },
-        { key: 'authRoleName', title: t('user.authRole') },
+        { key: 'authRoleName', title: t('user.authRole'), format: (_, record) => userAuthRoleName(record) },
         { key: 'loginTime', title: t('user.lastLoginTime') },
         { key: 'loginIp', title: t('user.lastLoginIp') },
       ]
@@ -262,7 +295,7 @@ fetchData()
                   :key="authRole.authRoleId"
                   :value="authRole.authRoleId"
                 >
-                  {{ authRole.authRoleName }}
+                  {{ authRoleDisplayName(authRole, t) }}
                 </a-select-option>
               </a-select>
             </a-form-item>
@@ -274,9 +307,10 @@ fetchData()
     <!-- 数据表格 -->
     <a-card :title="t('router.title.user')" :bordered="false">
       <template #extra>
-        <a-button v-permission="'system:user:export'" type="primary" @click="handleExport" :loading="exporting">
-          {{ t('common.export') }}
-        </a-button>
+        <a-space wrap>
+          <a-button v-permission="'system:user:api:create'" type="primary" @click="openEditor()">{{ t('robotai.createUser') }}</a-button>
+          <a-button v-permission="'system:user:export'" @click="handleExport" :loading="exporting">{{ t('common.export') }}</a-button>
+        </a-space>
       </template>
       
       <a-table
@@ -286,7 +320,7 @@ fetchData()
         :data-source="data"
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1200 }"
+        :scroll="{ x: 1800 }"
         size="middle"
         @change="onTableChange"
       >
@@ -342,11 +376,27 @@ fetchData()
           </template>
 
           <template v-else-if="column.dataIndex === 'authRoleName'">
-            <span>{{ record.authRoleName || '-' }}</span>
+            <span>{{ userAuthRoleName(record) }}</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'operation'">
+            <a-space :size="4" wrap>
+              <a-button v-permission="'system:user:api:manage'" type="link" size="small" @click="openEditor(record)">{{ t('common.edit') }}</a-button>
+              <a-button v-permission="'system:user:devices:api:list'" type="link" size="small" @click="openDevices(record)">{{ t('robotai.manageUserDevices') }}</a-button>
+              <a-button v-permission="'system:user:api:update'" type="link" size="small" :danger="record.state === '1'"
+                :disabled="record.userId === userStore.userInfo?.userId || changingState !== undefined"
+                :loading="changingState === record.userId" @click="changeState(record)">
+                {{ record.state === '1' ? t('common.disable') : t('common.enable') }}
+              </a-button>
+            </a-space>
           </template>
         </template>
       </a-table>
     </a-card>
+
+    <AdminUserDialog :visible="editorVisible" :current="editingUser" :roles="authRoleOptions"
+      @close="editorVisible = false" @saved="fetchData()" />
+    <UserDevicesDialog :visible="devicesVisible" :user="selectedUser"
+      @close="devicesVisible = false" @changed="fetchData()" />
 
     <!-- 回到顶部 -->
     <a-back-top />

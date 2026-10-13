@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/phone_frame.stl",
+  "scale": {
+    "bbox_diagonal_mm": 194.8236,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 96.0,
+        "support_area_pct": 0.6,
+        "build_height_mm": 16.5
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 5551.63,
+        "support_area_pct": 33.0,
+        "build_height_mm": 16.5
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 1090.01,
+        "support_area_pct": 6.5,
+        "build_height_mm": 90.0
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 1091.98,
+        "support_area_pct": 6.5,
+        "build_height_mm": 90.0
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 621.29,
+        "support_area_pct": 3.7,
+        "build_height_mm": 172.0
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 602.86,
+        "support_area_pct": 3.6,
+        "build_height_mm": 172.0
+      }
+    ]
+  },
+  "partial": false
+}

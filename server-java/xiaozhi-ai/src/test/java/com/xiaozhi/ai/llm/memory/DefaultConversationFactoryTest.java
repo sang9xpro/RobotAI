@@ -89,6 +89,17 @@ class DefaultConversationFactoryTest {
 
     // 模型配置里填了上下文长度就按它的七成做预算，没填或填 0 按默认上下文长度算
     @Test
+    void codexShortTurnsDoNotCompactBecauseOfUnusedRobotToolBudget() {
+        role.setModelId(5);
+        when(configLookup.getConfig(5)).thenReturn(new ConfigBO().setProvider("codex-chatgpt").setContextLength(4096));
+        var conversation = factory.initSessionConversation("user_chat_9", 9, role, "scope-1");
+        conversation.add(new UserMessage("Xin chào"));
+        conversation.add(new AssistantMessage("Chào bạn"));
+        assertThat(conversation.contextTokens()).isLessThan(factory.tokenBudget(role));
+        assertThat(conversation.rawMessages()).hasSize(2);
+    }
+
+    @Test
     void tokenBudgetFollowsTheModelContextLength() {
         role.setModelId(5);
         when(configLookup.getConfig(5)).thenReturn(new ConfigBO().setContextLength(131072));

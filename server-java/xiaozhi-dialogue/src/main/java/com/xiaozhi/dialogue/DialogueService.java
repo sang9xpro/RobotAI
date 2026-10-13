@@ -71,6 +71,9 @@ public class DialogueService{
     private static final Duration SEGMENT_MERGE_WAIT = Duration.ofSeconds(15);
 
     @Resource
+    private com.xiaozhi.common.port.PersonalMemoryStore personalMemoryStore;
+
+    @Resource
     private PersonaFactory personaFactory;
 
     @Resource
@@ -345,7 +348,7 @@ public class DialogueService{
         Sinks.Many<byte[]> turnSink = segment.sink();
         feedInitialAudio(session, initialAudio);
 
-        Thread.startVirtualThread(() -> {
+        Thread.startVirtualThread(session.getDialogueContext().getConversationTransport().bind(() -> {
             try {
                 if (turnSink == null) {
                     releaseDiscardedTurn(session, turnSink);
@@ -373,7 +376,7 @@ public class DialogueService{
                 if (segment.isRotated()) {
                     segment.complete(sttResult);
                     String soFar = turn.textSoFar();
-                    if (StringUtils.hasText(soFar) && persona.getPlayer() != null) {
+                    if (!session.getDialogueContext().getConversationTransport().enabled() && StringUtils.hasText(soFar) && persona.getPlayer() != null) {
                         persona.getPlayer().sendStt(soFar);
                     }
                     return;
@@ -407,6 +410,22 @@ public class DialogueService{
                     return;
                 }
 
+                if (session.getDialogueContext().getConversationTransport().enabled()) {
+                    var transport = session.getDialogueContext().getConversationTransport();
+                    if (!transport.validOutput()) return;
+                    if (sttResult.operationFailed()) {
+                        rejectIndividualTurn(session, "recognition_failed");
+                        return;
+                    }
+                    var decision = session.getDialogueContext().getIndividualConversation().admit(
+                            text, turn.speaker().sanitized(), turn.listeningContext(), System.nanoTime() / 1_000_000);
+                    if (decision.action() == com.xiaozhi.dialogue.runtime.IndividualConversation.Action.IGNORE) {
+                        rejectIndividualTurn(session, "not_addressed");
+                        return;
+                    }
+                    if (decision.switched()) personaFactory.replaceIndividualConversation(session, decision.scopeId());
+                }
+
                 // 发送STT识别结果到设备
                 persona.getPlayer().sendStt(sttResult.text());
 
@@ -424,7 +443,7 @@ public class DialogueService{
                     eventPublisher.publishEvent(new SpeechRecognizedEvent(this, sessionId, sttResult.text(),
                             sttResult.hasEmotion() ? sttResult.emotion() : null));
 
-                    handleText(session, sttResult, epoch, turn.speaker());
+                    handleText(session, sttResult, epoch, turn.speaker(), turn.listeningContext());
                 } finally {
                     persona.releaseTurn();
                 }
@@ -440,7 +459,7 @@ public class DialogueService{
                 // 中间段异常退出也要给个空终稿，最后一段拼接时才不用等到超时
                 segment.complete(SttResult.textOnly(""));
             }
-        });
+        }));
     }
 
     /**
@@ -493,6 +512,11 @@ public class DialogueService{
         }
         DeviceState state = session.getDeviceState();
         if (state == DeviceState.LISTENING || state == DeviceState.THINKING) {
+            var transport=session.getDialogueContext().getConversationTransport();
+            if(transport.enabled() && transport.validOutput()) {
+                session.sendTextMessage(com.xiaozhi.utils.JsonUtil.toJson(Map.of("type","turn_ignored","reason","no_speech")));
+                transport.cancel();
+            }
             session.transitionTo(DeviceState.IDLE);
         }
     }
@@ -538,6 +562,10 @@ public class DialogueService{
     }
 
     private void handleText(ChatSession session, SttResult sttResult, Long epoch, com.xiaozhi.common.model.bo.SpeakerHint speaker) {
+        handleText(session, sttResult, epoch, speaker, null);
+    }
+
+    private void handleText(ChatSession session, SttResult sttResult, Long epoch, com.xiaozhi.common.model.bo.SpeakerHint speaker, com.xiaozhi.common.model.bo.ListeningContext context) {
         try {
             Persona persona = session.getPersona();
 
@@ -547,9 +575,29 @@ public class DialogueService{
             MessageMetadataBO meta = (MessageMetadataBO) userMessage.getMetadata().computeIfAbsent(
                     MessageMetadataBO.METADATA_KEY, key -> MessageMetadataBO.builder().build());
             meta.setSpeaker(speaker.sanitized());
+            meta.setListeningContext(context == null ? null : context.sanitized());
+            persona.setPersonalFacts(java.util.List.of());
+            if(context != null && "recognized".equals(speaker.sanitized().status()) && !context.uncertain() && !context.overlapping()) {
+                var device = session.getDevice();
+                var scope = new com.xiaozhi.common.port.PersonalMemoryStore.Scope(device.getUserId(), device.getDeviceId(), device.getRoleId(), speaker.personId());
+                try {
+                    var memories = personalMemoryStore.read(scope);
+                    if(session.getDialogueContext().getIndividualConversation().memoryChanged(speaker.personId(),memories.revision()))
+                        personaFactory.replaceIndividualConversation(session, java.util.UUID.randomUUID().toString());
+                    personalMemoryStore.learn(scope, memories.revision(), com.xiaozhi.common.model.bo.StablePersonalFacts.extract(text));
+                    var current = personalMemoryStore.read(scope);
+                    if(session.getDialogueContext().getIndividualConversation().memoryChanged(speaker.personId(),current.revision()))
+                        personaFactory.replaceIndividualConversation(session, java.util.UUID.randomUUID().toString());
+                    if(current.enabled()) persona.setPersonalFacts(current.facts());
+                } catch(Exception unavailable) {
+                    // Fail closed on memory retrieval: don't reuse potentially deleted facts in history.
+                    personaFactory.replaceIndividualConversation(session, java.util.UUID.randomUUID().toString());
+                    log.warn("Personal memory unavailable for active conversation");
+                }
+            }
 
             // 意图检测
-            if (intentService.detect(text) == IntentService.Intent.EXIT) {
+            if ((context == null || !context.uncertain() && !context.overlapping()) && intentService.detect(text) == IntentService.Intent.EXIT) {
                 sendGoodbyeMessage(session);
                 return;
             }
@@ -557,9 +605,9 @@ public class DialogueService{
             // LLM+TTS
             try {
                 if (epoch != null) {
-                    persona.chat(userMessage, true, epoch);
+                    persona.chat(userMessage, context == null || !context.uncertain() && !context.overlapping(), epoch);
                 } else {
-                    persona.chat(userMessage, true);
+                    persona.chat(userMessage, context == null || !context.uncertain() && !context.overlapping());
                 }
             } catch (Exception e) {
                 log.error("LLM对话处理失败: {}", e.getMessage(), e);
@@ -568,6 +616,12 @@ public class DialogueService{
         } catch (Exception e) {
             log.error("处理文本失败: {}", e.getMessage(), e);
         }
+    }
+
+    private void rejectIndividualTurn(ChatSession session, String reason) {
+        session.sendTextMessage(com.xiaozhi.utils.JsonUtil.toJson(Map.of("type", "turn_ignored", "reason", reason)));
+        session.transitionTo(DeviceState.IDLE);
+        session.getDialogueContext().getConversationTransport().cancel();
     }
 
     /**

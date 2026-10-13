@@ -30,18 +30,18 @@ object Rai1 {
 
 /** Used by the session owner before any text reaches UI or audio reaches the decoder. */
 class TurnGuard {
-    var generation = 0L; private set
-    var turn = 0L; private set
+    @Volatile var generation = 0L; private set
+    @Volatile var turn = 0L; private set
     private var canceled = true
     private var audioSeq = -1L
     private var revision = -1
     private var final = false
-    fun reset(generation: Long) {
+    @Synchronized fun reset(generation: Long) {
         this.generation = generation
         turn = 0
         canceled = true
     }
-    fun begin(): Long {
+    @Synchronized fun begin(): Long {
         turn++
         canceled = false
         audioSeq = -1
@@ -49,15 +49,15 @@ class TurnGuard {
         final = false
         return turn
     }
-    fun cancel() { canceled = true }
-    fun accepts(generation: Long, turn: Long) = !canceled && generation == this.generation && turn == this.turn
-    fun acceptAudio(frame: AudioFrame): Boolean {
+    @Synchronized fun cancel() { canceled = true }
+    @Synchronized fun accepts(generation: Long, turn: Long) = !canceled && generation == this.generation && turn == this.turn
+    @Synchronized fun acceptAudio(frame: AudioFrame): Boolean {
         if (!accepts(frame.generation, frame.turn) || frame.seq <= audioSeq) return false
         require(frame.seq == audioSeq + 1) { "Audio mất thứ tự" }
         audioSeq = frame.seq
         return true
     }
-    fun acceptText(generation: Long, turn: Long, revision: Int, isFinal: Boolean): Boolean {
+    @Synchronized fun acceptText(generation: Long, turn: Long, revision: Int, isFinal: Boolean): Boolean {
         if (!accepts(generation, turn) || final || revision <= this.revision) return false
         this.revision = revision
         final = isFinal

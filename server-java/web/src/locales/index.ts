@@ -8,14 +8,14 @@
 import { createI18n } from 'vue-i18n'
 import { STORAGE_LOCALE } from '@/constants/storage'
 
-export type SupportedLocale = 'zh-CN' | 'en-US'
+export type SupportedLocale = 'zh-CN' | 'en-US' | 'vi-VN'
 
-const DEFAULT_LOCALE: SupportedLocale = 'zh-CN'
+const DEFAULT_LOCALE: SupportedLocale = 'vi-VN'
 
 /** 持久化的语言选择；取不到或值不合法都退回默认语言 */
 function readStoredLocale(): SupportedLocale {
   const stored = localStorage.getItem(STORAGE_LOCALE)
-  return stored === 'en-US' ? 'en-US' : DEFAULT_LOCALE
+  return stored === 'en-US' || stored === 'zh-CN' || stored === 'vi-VN' ? stored : DEFAULT_LOCALE
 }
 
 const initialLocale = readStoredLocale()
@@ -35,6 +35,7 @@ type LocaleMessages = (typeof import('./zh-CN'))['default']
 const localeLoaders: Record<SupportedLocale, () => Promise<{ default: LocaleMessages }>> = {
   'zh-CN': () => import('./zh-CN'),
   'en-US': () => import('./en-US'),
+  'vi-VN': () => import('./vi-VN'),
 }
 
 const loadedLocales = new Set<SupportedLocale>()

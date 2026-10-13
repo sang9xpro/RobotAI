@@ -9,14 +9,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
-@Composable fun PeoplePanel(controller:IdentityController, canEnroll:Boolean, enrollVoice:(String)->Unit, cancelVoice:()->Unit) {
+@Composable fun PeoplePanel(controller:IdentityController, canEnroll:Boolean, enrollVoice:(String)->Unit, cancelVoice:()->Unit, session:com.robotai.robot.auth.UserSession?=null, roleId:Int?=null, onMemoryChanged:()->Unit={}, deletePerson:((String)->Unit)?=null, awake:Boolean=true) {
+    DisposableEffect(controller) { onDispose { cancelVoice() } }
     val state by controller.state.collectAsState()
     val context=LocalContext.current
     var name by remember { mutableStateOf("") }; var address by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<String?>(null) }; var deleting by remember { mutableStateOf<String?>(null) }
     var voiceId by remember { mutableStateOf<String?>(null) }
+    var memoryPerson by remember { mutableStateOf<String?>(null) }
     var teachingPerson by remember { mutableStateOf<String?>(null) }
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if(it) voiceId?.let(enrollVoice) }
     var faceThreshold by remember { mutableStateOf(controller.prefs.getFloat("faceThreshold",.50f)) }
@@ -24,6 +27,12 @@ import androidx.compose.ui.unit.dp
     var socialGestures by remember(controller) { mutableStateOf(controller.prefs.getBoolean("socialGestures",true)) }
     Text("Người quen",style=MaterialTheme.typography.titleLarge)
     Text("Mẫu mặt và giọng được mã hóa trên điện thoại theo tài khoản. Camera tự bật khi Ken thức. Đăng ký 8 ảnh mặt và ít nhất 3 mẫu giọng để xác định người đang nói.")
+    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+        Switch(state.expressionsEnabled,controller::enableFacialExpressions,modifier=Modifier.testTag("facial-expressions-switch"))
+        Text("Phản ứng biểu cảm người quen")
+    }
+    Text("Ken cười cùng bạn hoặc thể hiện quan tâm khi nét mặt đủ rõ, kể cả khi bạn không nói. Chỉ cần đăng ký mặt; giữ một người trong hình, đủ sáng và nhìn gần thẳng camera.")
+    ExpressionReadinessStatus(state,awake,android.os.SystemClock.elapsedRealtime())
     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
         Switch(socialGestures,{socialGestures=it;controller.enableSocialGestures(it)})
         Text("Phản ứng cử chỉ người quen")
@@ -55,7 +64,12 @@ import androidx.compose.ui.unit.dp
         TextButton(onClick=controller::cancelEnrollment) { Text("Hủy thu mặt") }
     }
     if(state.voiceBusy) {
-        Text("Đang thu giọng trong 8 giây. Đọc một câu liền mạch, chỉ một người nói.")
+        if(state.voiceProcessing) Text("Đang kiểm tra mẫu giọng…")
+        else {
+            Text("Đang thu giọng: %.1f / 8 giây".format(state.voiceSeconds))
+            LinearProgressIndicator(progress=state.voiceSeconds/8f,modifier=Modifier.fillMaxWidth())
+            Text("Đọc một câu dài hoặc vài câu ngắn, tổng ít nhất 3 giây lời nói. Chỉ một người nói.")
+        }
         TextButton(onClick=cancelVoice) { Text("Hủy thu giọng") }
     }
     state.people.forEach { p ->
@@ -82,6 +96,10 @@ import androidx.compose.ui.unit.dp
                 TextButton(enabled=!state.voiceBusy,onClick={controller.clearVoice(p.id)}) { Text("Xóa mẫu giọng") }
                 TextButton(enabled=!state.voiceBusy,onClick={deleting=p.id}) { Text("Xóa người") }
             }
+            if(session!=null && roleId!=null) {
+                TextButton(onClick={memoryPerson=if(memoryPerson==p.id) null else p.id}) { Text("Ký ức của ${p.name}") }
+                if(memoryPerson==p.id) PersonalMemoryPanel(session,roleId,p.id,onMemoryChanged)
+            }
             if(p.learningRevision>0) Row {
                 TextButton(enabled=p.canUndoLearning && !state.voiceBusy && state.enrollment==null,onClick={controller.rollbackLearning(p.id)}) { Text("Hoàn tác lần học gần nhất") }
                 TextButton(enabled=p.learnedFaces.isNotEmpty() && !state.voiceBusy && state.enrollment==null,onClick={controller.clearLearnedFaces(p.id)}) { Text("Xóa mẫu tự học") }
@@ -93,6 +111,6 @@ import androidx.compose.ui.unit.dp
     Text("Ngưỡng giọng: %.2f".format(voiceThreshold))
     Slider(voiceThreshold,{voiceThreshold=it},onValueChangeFinished={controller.prefs.edit().putFloat("voiceThreshold",voiceThreshold).apply()},valueRange=.5f.. .85f)
     Text("Ngưỡng là điểm tương đồng, không phải xác suất. Tăng ngưỡng giảm nhận nhầm nhưng tăng số lượt chưa xác định. Người lạ luôn được tiếp chuyện bằng cách gọi trung tính.")
-    if(deleting!=null) AlertDialog(onDismissRequest={deleting=null},title={Text("Xóa người quen?")},text={Text("Xóa hồ sơ và toàn bộ mẫu mặt, giọng trên máy. Lịch sử hội thoại cũ không bị xóa.")},
-        confirmButton={TextButton(onClick={controller.delete(deleting!!);deleting=null}) { Text("Xóa") }},dismissButton={TextButton(onClick={deleting=null}) {Text("Hủy")}})
+    if(deleting!=null) AlertDialog(onDismissRequest={deleting=null},title={Text("Xóa người quen?")},text={Text("Xóa hồ sơ, mẫu mặt, giọng trên máy và ký ức riêng trên backend. Lịch sử hội thoại cũ được giữ.")},
+        confirmButton={TextButton(onClick={(deletePerson ?: controller::delete)(deleting!!);deleting=null}) { Text("Xóa") }},dismissButton={TextButton(onClick={deleting=null}) {Text("Hủy")}})
 }

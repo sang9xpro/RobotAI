@@ -62,11 +62,11 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
         }
 
         // 播放线程、容器线程、工具调用线程会同时下行，原生 session 禁止并发写，
-        // 装饰器负责串行化；缓冲溢出丢最旧帧而不是断连，避免弱网直接掉线
+        // 装饰器负责串行化；溢出时关闭连接，不能丢帧破坏 RAI1 序号和播放确认
         com.xiaozhi.communication.server.websocket.WebSocketSession xiaoZhiSession
                 = new com.xiaozhi.communication.server.websocket.WebSocketSession(
                         new ConcurrentWebSocketSessionDecorator(session, sendTimeLimitMs, sendBufferSizeLimit,
-                                ConcurrentWebSocketSessionDecorator.OverflowStrategy.DROP));
+                                ConcurrentWebSocketSessionDecorator.OverflowStrategy.TERMINATE));
         // 握手头先给出版本，hello 到达后以其声明为准
         xiaoZhiSession.setProtocolVersion(resolveProtocolVersion(
                 parseVersion(session.getHandshakeHeaders().getFirst("Protocol-Version")), session.getId()));
@@ -120,6 +120,10 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
                     }
                     log.info("自动绑定成功，继续处理消息 - SessionId: {}, DeviceId: {}", sessionId, device.getDeviceId());
                 }
+                if (chatSession != null && chatSession.getPersona() != null
+                        && !chatSession.getPersona().isConnectionReady() && !(msg instanceof AbortMessage)) {
+                    return;
+                }
                 messageHandler.handleMessage(msg, sessionId);
             }
         } catch (Exception e) {
@@ -134,9 +138,21 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
         if (chatSession == null || chatSession.getDevice() == null) {
             return;
         }
+        if (chatSession.getPersona() != null && !chatSession.getPersona().isConnectionReady()) return;
         ByteBuffer buffer = message.getPayload();
         byte[] data = new byte[buffer.remaining()];
         buffer.get(data);
+        var transport = chatSession.getDialogueContext().getConversationTransport();
+        if (transport.enabled()) {
+            try {
+                var frame = Rai1Codec.decode(data);
+                if (transport.accept(frame)) messageHandler.handleBinaryMessage(sessionId, frame.payload(), 0);
+            } catch (IllegalArgumentException e) {
+                log.warn("Rejected RAI1 uplink: {}", e.getMessage());
+                chatSession.close();
+            }
+            return;
+        }
         int version = chatSession.getProtocolVersion();
         BinaryProtocolCodec.Frame frame = BinaryProtocolCodec.decode(version, data);
         if (frame == null) {
@@ -167,6 +183,7 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
         } else {
             // 真正的传输错误
             log.error("WebSocket传输错误 - SessionId: {}", sessionId, exception);
+            messageHandler.afterConnectionClosed(sessionId);
         }
     }
 
@@ -206,6 +223,16 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
 
         messageHandler.applyAudioParams(sessionId, message.getAudioParams());
 
+        boolean smart = current != null && message.getRobotai() != null
+                && message.getRobotai().path("contract_version").asInt() == 1
+                && message.getRobotai().path("conversation_context_v1").asBoolean()
+                && message.getRobotai().path("audio_envelopes").toString().contains("\"rai1\"");
+        if (smart) {
+            if(!current.getDialogueContext().getConversationTransport().enabled()) {
+                current.getDialogueContext().getConversationTransport().enable();
+                messageHandler.enableIndividualConversation(current);
+            }
+        }
         // 回复hello消息
         var resp = new HelloResponseMessage()
                 .setVersion(protocolVersion)
@@ -213,22 +240,52 @@ public class WebSocketHandler extends AbstractWebSocketHandler {
                 .setSessionId(sessionId)
                 .setAudioParams(AudioParams.serverCapability());
 
+        if (smart) {
+            var ext = JsonUtil.OBJECT_MAPPER.createObjectNode();
+            ext.put("contract_version", 1).put("audio_envelope", "rai1").put("mock", false)
+                .put("conversation_context_v1", true).put("stt_mode", "final_only")
+                .put("generation", current.getDialogueContext().getConversationTransport().generation());
+            resp.setRobotai(ext);
+        }
         try {
             // 走会话对象下行，直接写原生 session 会绕过串行化装饰器
             if (current == null) {
                 log.warn("会话未注册，hello响应无法下发 - SessionId: {}", sessionId);
                 return;
             }
-            current.sendTextMessage(JsonUtil.toJson(resp));
-            if (message.getFeatures() != null && Boolean.TRUE.equals(message.getFeatures().getMcp())) {
-                //如果客户端开启mcp协议，异步初始化MCP工具
-                Thread.startVirtualThread(() -> {
-                    DeviceBO device = current.getDevice();
-                    if (device != null && device.getRoleId() != null) {
-                        deviceMcpService.initialize(current);
-                    }
-                });
+            var persona = current.getPersona();
+            if (persona == null && com.xiaozhi.dialogue.llm.factory.PersonaFactory.isAuthenticatedApp(current.getDevice())) {
+                current.sendTextMessage(JsonUtil.toJson(java.util.Map.of("type", "session", "state", "failed", "session_id", sessionId,
+                        "message", "Hãy chọn nhân vật trước khi chuẩn bị phiên mô hình.")));
+                sessionManager.closeSession(current);
+                return;
             }
+            var preparation = persona != null ? persona.prepareConnection() : java.util.concurrent.CompletableFuture.<Void>completedFuture(null);
+            if (!preparation.isDone()) {
+                current.sendTextMessage(JsonUtil.toJson(java.util.Map.of("type", "session", "state", "preparing", "session_id", sessionId)));
+            }
+            preparation.whenComplete((unused, error) -> {
+                if (sessionManager.getSession(sessionId) != current || current.getPersona() != persona) return;
+                try {
+                    if (error != null) {
+                        current.sendTextMessage(JsonUtil.toJson(java.util.Map.of("type", "session", "state", "failed", "session_id", sessionId,
+                                "message", "Không thể chuẩn bị phiên mô hình. Vui lòng kết nối lại.")));
+                        sessionManager.closeSession(current);
+                        return;
+                    }
+                    resp.setReady(true);
+                    current.sendTextMessage(JsonUtil.toJson(resp));
+                    if (message.getFeatures() != null && Boolean.TRUE.equals(message.getFeatures().getMcp())) {
+                        com.xiaozhi.common.AppVirtualThreads.factory("device-mcp-init-").newThread(() -> {
+                            DeviceBO device = current.getDevice();
+                            if (device != null && device.getRoleId() != null) deviceMcpService.initialize(current);
+                        }).start();
+                    }
+                } catch (Exception e) {
+                    sessionManager.closeSession(current);
+                }
+            });
+
         } catch (Exception e) {
             log.error("发送hello响应失败", e);
         }

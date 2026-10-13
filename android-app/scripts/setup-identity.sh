@@ -11,6 +11,7 @@ fetch() {
 }
 fetch 'https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx' "$root/robot-app/app/src/main/assets/identity/sface.onnx" '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79'
 bash "$root/scripts/setup-speaker.sh"
+bash "$root/scripts/setup-expressions.sh"
 fetch 'https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.24.3/onnxruntime-android-1.24.3.aar' "$root/whisper-test/app/libs/onnxruntime-android-1.24.3.aar" '67397e4a970e75617f765d2015ceaf911917e1d822276cfb5792744e8085cbce'
 python3 "$root/tts-test/prepare_ort_runtime.py"
 mkdir -p "$root/robot-app/app/src/main/assets/speaker"

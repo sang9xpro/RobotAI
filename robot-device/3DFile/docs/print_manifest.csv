@@ -1,0 +1,26 @@
+file,quantity,material,layer_mm,orientation,supports,notes
+STL/base.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/base_orientations.json,
+STL/lid.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/lid_orientations.json,
+STL/battery_tray.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/battery_tray_orientations.json,
+STL/electronics_deck.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/electronics_deck_orientations.json,
+STL/motor_cradle.stl,2,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/motor_cradle_orientations.json,Fit test first
+STL/motor_cap.stl,2,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/motor_cap_orientations.json,
+STL/drive_wheel.stl,2,PETG,0.2,"Consider flip 180 X, then drop to bed; see KET_QUA_KIEM_TRA.md",Review slicer and docs/dfam/drive_wheel_orientations.json,
+STL/idler_wheel.stl,2,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/idler_wheel_orientations.json,
+STL/bearing_spacer.stl,0,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/bearing_spacer_orientations.json,Fit coupon only; use two metal spacers 17.6 mm long. Printed wall 1.299 mm below unsupported FDM 1.6 mm guideline.
+STL/tensioner.stl,2,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/tensioner_orientations.json,
+STL/track.stl,2,TPU 95A,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/track_orientations.json,Fit test first
+STL/fender.stl,2,PETG,0.2,"Consider flip 180 X, then drop to bed; see KET_QUA_KIEM_TRA.md",Review slicer and docs/dfam/fender_orientations.json,
+STL/sensor_carrier.stl,4,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/sensor_carrier_orientations.json,
+STL/front_sensor_carrier.stl,2,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/front_sensor_carrier_orientations.json,
+STL/io_panel.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/io_panel_orientations.json,
+STL/io_panel_blank.stl,0,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/io_panel_blank_orientations.json,Alternative to io_panel; print only if needed
+STL/neck_mount.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/neck_mount_orientations.json,
+STL/servo_cap.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/servo_cap_orientations.json,
+STL/cable_clip.stl,2,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/cable_clip_orientations.json,
+STL/calibration_coupon.stl,1,PETG,0.2,As exported; Z=0 on bed,Review slicer and docs/dfam/calibration_coupon_orientations.json,Fit test first
+STL/front_sensor_bezel.stl,2,PETG dark charcoal,0.2,As exported; Z=0 on bed,Check flange overhang in slicer,"R2 front ToF bezel, no transparent window; verify optical field after assembly"
+STL/head_stem.stl,1,PETG,.2,Consider -90 Y then drop to bed; evaluate layer strength and supports,See docs/dfam/head_stem_orientations.json,R3 magnetic head
+STL/magnetic_head.stl,1,PETG,.2,As exported; inspect slicer supports,See docs/dfam/magnetic_head_orientations.json,R3 magnetic head
+STL/neck_shroud.stl,1,PETG,.2,"Consider flip 180 X, then drop to bed; see KET_QUA_KIEM_TRA.md",See docs/dfam/neck_shroud_orientations.json,R3 magnetic head
+STL/tower_side_panel.stl,2,PETG cream,.2,Print one original and one mirrored across X; drop to bed,See docs/dfam/tower_side_panel_orientations.json,R4 left/right decorative panels; removable thin adhesive

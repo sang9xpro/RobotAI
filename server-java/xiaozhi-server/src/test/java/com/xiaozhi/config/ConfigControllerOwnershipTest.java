@@ -8,7 +8,8 @@ import com.xiaozhi.security.ownership.OwnershipChecker;
 import com.xiaozhi.user.service.UserService;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
@@ -45,13 +46,14 @@ class ConfigControllerOwnershipTest {
     @Mock
     private MethodSignature methodSignature;
 
-    @Test
-    void configTestEndpointChecksConfigOwnership() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"test", "testSttAudio", "testTtsAudio", "models"})
+    void configTestEndpointChecksConfigOwnership(String endpoint) throws Exception {
         when(ownershipChecker.getResource()).thenReturn("config");
         when(userService.getBO(CURRENT_USER_ID)).thenReturn(normalUser());
         when(joinPoint.getSignature()).thenReturn(methodSignature);
-        when(methodSignature.getMethod()).thenReturn(testEndpoint());
-        when(joinPoint.getArgs()).thenReturn(new Object[]{request(7)});
+        when(methodSignature.getMethod()).thenReturn(testEndpoint(endpoint));
+        when(joinPoint.getArgs()).thenReturn(arguments(endpoint, request(7)));
 
         try (MockedStatic<StpUtil> stpUtil = mockStatic(StpUtil.class)) {
             stpUtil.when(StpUtil::getLoginId).thenReturn(CURRENT_USER_ID);
@@ -62,13 +64,14 @@ class ConfigControllerOwnershipTest {
         }
     }
 
-    @Test
-    void configTestEndpointSkipsCheckForUnsavedForm() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"test", "testSttAudio", "testTtsAudio", "models"})
+    void configTestEndpointSkipsCheckForUnsavedForm(String endpoint) throws Exception {
         when(ownershipChecker.getResource()).thenReturn("config");
         when(userService.getBO(CURRENT_USER_ID)).thenReturn(normalUser());
         when(joinPoint.getSignature()).thenReturn(methodSignature);
-        when(methodSignature.getMethod()).thenReturn(testEndpoint());
-        when(joinPoint.getArgs()).thenReturn(new Object[]{request(null)});
+        when(methodSignature.getMethod()).thenReturn(testEndpoint(endpoint));
+        when(joinPoint.getArgs()).thenReturn(arguments(endpoint, request(null)));
 
         try (MockedStatic<StpUtil> stpUtil = mockStatic(StpUtil.class)) {
             stpUtil.when(StpUtil::getLoginId).thenReturn(CURRENT_USER_ID);
@@ -85,8 +88,13 @@ class ConfigControllerOwnershipTest {
         return aspect;
     }
 
-    private static Method testEndpoint() throws NoSuchMethodException {
-        return ConfigController.class.getDeclaredMethod("test", ConfigTestReq.class);
+    private static Object[] arguments(String endpoint, ConfigTestReq req) {
+        return endpoint.equals("testSttAudio") ? new Object[]{req, null} : new Object[]{req};
+    }
+    private static Method testEndpoint(String endpoint) throws NoSuchMethodException {
+        return endpoint.equals("testSttAudio")
+            ? ConfigController.class.getDeclaredMethod(endpoint, ConfigTestReq.class, org.springframework.web.multipart.MultipartFile.class)
+            : ConfigController.class.getDeclaredMethod(endpoint, ConfigTestReq.class);
     }
 
     private static ConfigTestReq request(Integer configId) {

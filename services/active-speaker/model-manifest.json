@@ -1,0 +1,13 @@
+{
+  "source": "https://github.com/TaoRuijie/TalkNet-ASD",
+  "commit": "6d6821479af485e251c4991487e40573b42181b4",
+  "checkpointGoogleDriveId": "1AbN9fCf9IexMxEKXLQY2KYBlb-IhSEea",
+  "checkpointSha256": "d985ddd07dca08864a28337726f5b7d91b6426bebc7327f0e9b21cf9ff1cc937",
+  "onnxSha256": "a72c0a31e3057e4c9af83b52aeac644fae239d99bb1202fdee1a096c728632e3",
+  "opset": 17,
+  "audioShape": [1, 100, 13],
+  "visualShape": [1, 25, 112, 112],
+  "outputShape": [25, 2],
+  "exportParity": "passed on CPU; rtol=0.0002, atol=0.0002",
+  "deviceAcceptance": "not measured"
+}

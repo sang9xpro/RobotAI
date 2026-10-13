@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/track.stl",
+  "scale": {
+    "bbox_diagonal_mm": 146.2256,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 583.07,
+        "support_area_pct": 2.9,
+        "build_height_mm": 21.4
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 583.07,
+        "support_area_pct": 2.9,
+        "build_height_mm": 21.4
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 4615.43,
+        "support_area_pct": 22.9,
+        "build_height_mm": 59.71
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 5439.25,
+        "support_area_pct": 27.0,
+        "build_height_mm": 59.71
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 2963.88,
+        "support_area_pct": 14.7,
+        "build_height_mm": 131.75
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 2970.05,
+        "support_area_pct": 14.7,
+        "build_height_mm": 131.75
+      }
+    ]
+  },
+  "partial": false
+}

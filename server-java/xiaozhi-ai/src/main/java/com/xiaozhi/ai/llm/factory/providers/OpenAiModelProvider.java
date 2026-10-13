@@ -56,7 +56,7 @@ public class OpenAiModelProvider implements ChatModelProvider {
     
     @Override
     public ChatModel createChatModel(ConfigBO config, RoleBO role) {
-        String endpoint = config.getApiUrl();
+        String endpoint = com.xiaozhi.ai.utils.OpenAiSpeechEndpoint.resolve(config.getApiUrl(), "").toString();
         String apiKey = config.getApiKey();
         String model = config.getConfigName();
         Double temperature = role.getTemperature();
@@ -82,7 +82,7 @@ public class OpenAiModelProvider implements ChatModelProvider {
                 .maxCompletionTokens(2000)
                 .streamUsage(true);
 
-        applyThinkingOptions(chatOptionsBuilder, enableThinking, model);
+        applyThinkingOptions(chatOptionsBuilder, config, model);
         applyProviderOptions(chatOptionsBuilder, model);
 
         var openAiChatOptions = chatOptionsBuilder.build();
@@ -114,6 +114,10 @@ public class OpenAiModelProvider implements ChatModelProvider {
             builder.reasoningEffort("medium");
             log.info("OpenAI model {} 已启用思考模式，reasoningEffort=medium", model);
         }
+    }
+
+    protected void applyThinkingOptions(OpenAiChatOptions.Builder builder, ConfigBO config, String model) {
+        applyThinkingOptions(builder, Boolean.TRUE.equals(config.getEnableThinking()), model);
     }
 
     /**

@@ -4,8 +4,10 @@ Client thu microphone/encode Opus, WebSocket và playback; STT/LLM/TTS chạy tr
 
 Bản `0.2-companion-preview` có các tab Ken, Hội thoại, Thị giác, Tiện ích, Ký ức và Đế robot:
 
-- Mặt robot phản ứng khi chạm, nhàn rỗi, nghe và nói; biểu cảm theo từng câu và emotion backend.
+- Bộ animation Ken v1 dùng chung cho màn Ken, Hội thoại, Thị giác và chế độ đế: mắt mềm, biểu cảm chuyển bằng spring, phản ứng vector cho 12 cử chỉ và chạm mặt. Miệng theo mức PCM đang phát; giảm chuyển động khi tắt animation hệ thống. Xem [animation Ken v1](../../docs/KEN_ANIMATION_ANDROID_VI.md).
 - Camera tự bật khi robot thức và app foreground; không phụ thuộc tab. Hồ sơ người quen mã hóa trên máy, SFace nhận diện mặt, CAM++ xác định người nói theo lượt. Chụp/gửi ảnh qua VisionService vẫn cần cho phép và nhấn gửi riêng.
+- Phản ứng biểu cảm người quen chạy local bằng MobileFaceNet: Ken cười cùng nụ cười, thể hiện quan tâm trước nét buồn và tò mò trước nét ngạc nhiên, kể cả khi người đó không nói. Có công tắc riêng trong Người quen, áp dụng cho Ken/Hội thoại/đế; xem [cách dùng và kiểm chứng](../../docs/KNOWN_PERSON_EXPRESSIONS_VI.md).
+- Hội thoại chỉ hoạt động ở tab Ken và Hội thoại (kể cả mặt Ken toàn màn hình khi đặt lên đế). Rời hai màn này sẽ hủy lượt hiện tại, dừng phát/thu audio và ngắt WebSocket. Tab Người quen dùng micro riêng cho thu mẫu giọng; hủy thu hoặc rời tab sẽ nhả micro trước khi tiếp tục hội thoại. Quay lại màn trò chuyện sẽ nối lại nếu trước đó đã kết nối.
 - Đồng hồ, nhắc việc lưu theo tài khoản và khôi phục sau restart; thời tiết thật qua backend/Open-Meteo.
 - Xem/sửa/xóa bản tóm tắt ký ức theo user/role. Xóa tóm tắt không xóa lịch sử gốc.
 - Cổng MCP `self.robot.action` và telemetry mô phỏng, kiểm quyền, tuổi lệnh, replay và watchdog trước khi chấp nhận hành động. Chưa có transport ESP32 thật.
@@ -43,8 +45,8 @@ Bài voice thu micro thật. Mặc định phát mẫu bằng loa Mac, đợi ph
 ### Chế độ đế sạc không dây
 
 Khi app đang mở và đã đăng nhập, đặt điện thoại lên sạc không dây sẽ tự chuyển
-sang mặt Ken ngang toàn màn hình: nền đen, mắt xanh cyan có quầng sáng xanh,
-chớp mắt và miệng chuyển động khi trả lời. Sau khi chọn role và cấp quyền micro,
+sang mặt Ken ngang toàn màn hình: nền tối, mắt bạc hà có ánh sáng nhẹ,
+chớp mắt có nhịp biến thiên và miệng theo âm lượng tiếng nói đang phát. Sau khi chọn role và cấp quyền micro,
 app tự kết nối WebSocket và dùng hội thoại rảnh tay hiện có. Camera nhận diện
 vẫn theo quyền đã cấp và vòng đời foreground, không hiện preview trên mặt robot.
 
@@ -94,3 +96,7 @@ Test `handsfree` dùng micro thật và backend thật, đánh thức bằng tha
 trong lúc nghe, tự kết thúc, STT, phát trả lời và tự nghe tiếp. Bài này không
 xác nhận đánh thức bằng câu gọi. Kết quả lần chạy 06/10/2026:
 [báo cáo test rảnh tay](../../docs/HANDSFREE_TEST_2026_10_06_VI.md).
+
+## Hội thoại riêng
+
+Bản 0.3 bổ sung lời gọi từ cùng bản thu PCM, giọng khách tạm, admission ở Android/backend, RAI1 thực, ký ức riêng và kiểm tra phần loa đã phát. Xem [quy tắc, cấu hình mô hình và kiểm chứng thiết bị](../../docs/INDIVIDUAL_CONVERSATION_VI.md). Tự mở lượt bằng mặt/giọng và ngắt lời bằng giọng cần kết quả kiểm chứng trên điện thoại; khi chưa đạt dùng lời gọi hoặc nút micro. Không có hội thoại nhóm.

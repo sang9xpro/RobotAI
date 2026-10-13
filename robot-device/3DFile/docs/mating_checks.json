@@ -1,0 +1,234 @@
+{
+  "units": "mm",
+  "probe_diameter_mm": 3,
+  "rows": [
+    {
+      "joint": "lid screw -62.0,-40.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "lid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "lid screw 62.0,-40.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "lid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "lid screw -62.0,12.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "lid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "lid screw 62.0,12.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "lid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "lid screw 0.0,-78.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "lid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "lid screw 0.0,78.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "lid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "deck screw -60.0,-30.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "electronics_deck": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "deck screw 60.0,-30.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "electronics_deck": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "deck screw -24.0,62.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "electronics_deck": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "deck screw 24.0,62.0",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "electronics_deck": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "neck screw -44.0,-7.0",
+      "obstruction_mm3": {
+        "lid": 0.0,
+        "neck_mount": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "neck screw -44.0,31.0",
+      "obstruction_mm3": {
+        "lid": 0.0,
+        "neck_mount": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "neck screw 38.0,-7.0",
+      "obstruction_mm3": {
+        "lid": 0.0,
+        "neck_mount": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "neck screw 38.0,31.0",
+      "obstruction_mm3": {
+        "lid": 0.0,
+        "neck_mount": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor left -8,-11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_left": 0.0,
+        "motor_cap_left": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor left -8,11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_left": 0.0,
+        "motor_cap_left": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor left 8,-11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_left": 0.0,
+        "motor_cap_left": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor left 8,11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_left": 0.0,
+        "motor_cap_left": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "idler axle left",
+      "obstruction_mm3": {
+        "tensioner_left": 0.0,
+        "idler_wheel_left": 0.0,
+        "bearing_spacer_left": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor right -8,-11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_right": 0.0,
+        "motor_cap_right": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor right -8,11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_right": 0.0,
+        "motor_cap_right": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor right 8,-11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_right": 0.0,
+        "motor_cap_right": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "motor right 8,11",
+      "obstruction_mm3": {
+        "base": 0.0,
+        "motor_cradle_right": 0.0,
+        "motor_cap_right": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "idler axle right",
+      "obstruction_mm3": {
+        "tensioner_right": 0.0,
+        "idler_wheel_right": 0.0,
+        "bearing_spacer_right": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "opposed neck pivot",
+      "obstruction_mm3": {
+        "head_stem": 0.0,
+        "neck_mount": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "magnetic mount screw 9",
+      "obstruction_mm3": {
+        "head_stem": 0.0,
+        "magnetic_head": 0.0
+      },
+      "passed": true
+    },
+    {
+      "joint": "magnetic mount screw 25",
+      "obstruction_mm3": {
+        "head_stem": 0.0,
+        "magnetic_head": 0.0
+      },
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "scope": "Saved nominal assembly screw passages only; excludes screw heads, nuts, tools and actual purchased tolerances."
+}

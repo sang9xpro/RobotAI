@@ -1,9 +1,13 @@
+import { robotaiZh } from './robotai'
+import { accessControlZh } from './accessControl'
 /**
  * 中文语言包
  */
 export default {
+  robotai: robotaiZh,
+  accessControl: accessControlZh,
   common: {
-    appTitle: 'Connect Ai - 智能物联网管理平台',
+    appTitle: 'RobotAI',
     confirm: '确定',
     cancel: '取消',
     save: '保存',

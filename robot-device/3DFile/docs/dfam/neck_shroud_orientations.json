@@ -1,0 +1,51 @@
+{
+  "file": "STL/neck_shroud.stl",
+  "scale": {
+    "bbox_diagonal_mm": 119.0007,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 3424.68,
+        "support_area_pct": 15.3,
+        "build_height_mm": 33.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 1436.82,
+        "support_area_pct": 6.4,
+        "build_height_mm": 33.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 3241.84,
+        "support_area_pct": 14.5,
+        "build_height_mm": 70.0
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 3176.88,
+        "support_area_pct": 14.2,
+        "build_height_mm": 70.0
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 3334.55,
+        "support_area_pct": 14.9,
+        "build_height_mm": 90.4
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 3334.69,
+        "support_area_pct": 14.9,
+        "build_height_mm": 90.4
+      }
+    ]
+  },
+  "partial": false
+}

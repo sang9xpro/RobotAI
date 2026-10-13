@@ -105,13 +105,20 @@ public class RoleServiceImpl implements RoleService {
     public Integer copyDefaultRole(Integer sourceUserId, Integer targetUserId) {
 
         RoleDO sourceRole = findDefaultOrFirstDO(sourceUserId);
-        if (sourceRole == null) {
-            throw new IllegalStateException("默认角色模板不存在");
-        }
-
         resetDefault(targetUserId);
-
-        RoleDO copiedRole = roleConvert.copy(sourceRole);
+        // A fresh installation may not have an admin persona yet. Initialize a
+        // generic persona instead of copying another user's private settings.
+        RoleDO copiedRole;
+        if (sourceRole == null) {
+            copiedRole = new RoleDO();
+            copiedRole.setRoleName("RobotAI");
+            copiedRole.setRoleDesc("Bạn là trợ lý RobotAI. Hãy trò chuyện thân thiện và trả lời bằng ngôn ngữ của người dùng.");
+            copiedRole.setState(Role.STATE_ENABLED);
+            copiedRole.setVoiceName("vi-VN-HoaiMyNeural");
+            copiedRole.setInactiveTimeoutSeconds(60);
+        } else {
+            copiedRole = roleConvert.copy(sourceRole);
+        }
         copiedRole.setUserId(targetUserId);
         copiedRole.setIsDefault("1");
         if (roleMapper.insert(copiedRole) <= 0) {

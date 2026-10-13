@@ -1,0 +1,358 @@
+{
+  "units": "mm",
+  "part_checks": [
+    {
+      "name": "base",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 165166.666,
+      "bounds_mm": [
+        144.0,
+        174.0,
+        42.0
+      ],
+      "min_z": -0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "lid",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 132333.738,
+      "bounds_mm": [
+        144.0,
+        174.0,
+        30.0
+      ],
+      "min_z": -0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "battery_tray",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 24715.569,
+      "bounds_mm": [
+        78.0,
+        50.0,
+        24.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "electronics_deck",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 50723.29,
+      "bounds_mm": [
+        130.0,
+        151.0,
+        3.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "motor_cradle",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 10723.503,
+      "bounds_mm": [
+        24.0,
+        28.0,
+        23.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "motor_cap",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 2213.873,
+      "bounds_mm": [
+        24.0,
+        28.0,
+        4.5
+      ],
+      "min_z": -0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "drive_wheel",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 55274.124,
+      "bounds_mm": [
+        55.0,
+        55.0,
+        32.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "idler_wheel",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 24732.731,
+      "bounds_mm": [
+        39.0,
+        39.0,
+        26.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "bearing_spacer",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 337.834,
+      "bounds_mm": [
+        6.0,
+        6.0,
+        17.6
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "tensioner",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 2177.27,
+      "bounds_mm": [
+        36.0,
+        22.0,
+        3.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "track",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 23190.613,
+      "bounds_mm": [
+        131.753,
+        59.708,
+        21.4
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "fender",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 13190.884,
+      "bounds_mm": [
+        135.852,
+        31.0,
+        30.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "sensor_carrier",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 1530.209,
+      "bounds_mm": [
+        29.0,
+        26.0,
+        5.4
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "front_sensor_carrier",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 1800.278,
+      "bounds_mm": [
+        32.0,
+        26.0,
+        5.4
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "front_sensor_bezel",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 516.792,
+      "bounds_mm": [
+        20.0,
+        20.0,
+        4.1
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "io_panel",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 6178.511,
+      "bounds_mm": [
+        74.0,
+        31.0,
+        3.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "io_panel_blank",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 6786.321,
+      "bounds_mm": [
+        74.0,
+        31.0,
+        3.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "neck_mount",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 74801.336,
+      "bounds_mm": [
+        100.0,
+        88.0,
+        28.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "servo_cap",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 5730.648,
+      "bounds_mm": [
+        44.0,
+        52.0,
+        3.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "head_stem",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 9790.482,
+      "bounds_mm": [
+        23.0,
+        23.5,
+        28.5
+      ],
+      "min_z": -0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "magnetic_head",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 7652.464,
+      "bounds_mm": [
+        62.0,
+        75.0,
+        9.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "neck_shroud",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 33190.722,
+      "bounds_mm": [
+        90.4,
+        70.0,
+        33.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "tower_side_panel",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 1185.372,
+      "bounds_mm": [
+        2.461,
+        34.0,
+        20.0
+      ],
+      "min_z": -0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "cable_clip",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 901.585,
+      "bounds_mm": [
+        18.0,
+        12.0,
+        7.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    },
+    {
+      "name": "calibration_coupon",
+      "valid": true,
+      "solids": 1,
+      "volume_mm3": 10234.631,
+      "bounds_mm": [
+        80.0,
+        35.0,
+        4.0
+      ],
+      "min_z": 0.0,
+      "fits_220_bed": true
+    }
+  ],
+  "interferences": [
+    {
+      "a": "drive_wheel_left",
+      "b": "track_left",
+      "overlap_mm3": 483.754,
+      "accepted_elastic_preload": true
+    },
+    {
+      "a": "idler_wheel_left",
+      "b": "track_left",
+      "overlap_mm3": 300.38,
+      "accepted_elastic_preload": true
+    },
+    {
+      "a": "drive_wheel_right",
+      "b": "track_right",
+      "overlap_mm3": 483.754,
+      "accepted_elastic_preload": true
+    },
+    {
+      "a": "idler_wheel_right",
+      "b": "track_right",
+      "overlap_mm3": 300.38,
+      "accepted_elastic_preload": true
+    }
+  ],
+  "elastic_preload_note": "Only four wheel/TPU belt pairs have intentional 0.3 mm radial preload; all other overlap above 0.1 mm3 fails.",
+  "passed": true
+}

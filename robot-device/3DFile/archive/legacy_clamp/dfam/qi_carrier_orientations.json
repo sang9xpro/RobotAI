@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/qi_carrier.stl",
+  "scale": {
+    "bbox_diagonal_mm": 115.7761,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 10.66,
+        "support_area_pct": 0.1,
+        "build_height_mm": 9.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 1652.4,
+        "support_area_pct": 20.5,
+        "build_height_mm": 9.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 1096.4,
+        "support_area_pct": 13.6,
+        "build_height_mm": 61.59
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 1055.43,
+        "support_area_pct": 13.1,
+        "build_height_mm": 61.59
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 867.99,
+        "support_area_pct": 10.8,
+        "build_height_mm": 97.62
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 827.22,
+        "support_area_pct": 10.3,
+        "build_height_mm": 97.62
+      }
+    ]
+  },
+  "partial": false
+}

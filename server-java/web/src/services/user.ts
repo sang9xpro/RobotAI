@@ -1,6 +1,7 @@
 import { http } from './request'
 import api from './api'
-import type { User, UserQueryParams, UpdateUserParams, LoginResponse } from '@/types/user'
+import type { User, UserQueryParams, UpdateUserParams, LoginResponse, AdminUserInput, AdminRobot, RobotAssignment } from '@/types/user'
+import type { Device } from '@/types/device'
 
 /**
  * 用户登录
@@ -100,3 +101,12 @@ export function updateUser(data: Partial<UpdateUserParams>) {
   const { userId, ...updateData } = data
   return http.put(`${api.user.root}/${userId}`, updateData)
 }
+
+const adminUsers = api.adminUsers
+export const createAdminUser = (data: AdminUserInput) => http.post<User>(adminUsers, data)
+export const getAdminUser = (userId: number) => http.get<User>(`${adminUsers}/${userId}`)
+export const updateAdminUser = (userId: number, data: AdminUserInput) => http.put<User>(`${adminUsers}/${userId}`, data)
+export const updateUserState = (userId: number, state: string) => http.put<User>(`${api.user.root}/${userId}/state`, undefined, { params: { state } })
+export const queryAdminRobots = (params: { search?: string; pageNo?: number; pageSize?: number }) => http.getPage<AdminRobot>(`${adminUsers}/robots`, params)
+export const queryUserDevices = (userId: number, params: { pageNo?: number; pageSize?: number }) => http.getPage<Device>(`${adminUsers}/${userId}/devices`, params)
+export const assignUserDevices = (userId: number, devices: RobotAssignment[]) => http.post<number>(`${adminUsers}/${userId}/devices`, { devices })

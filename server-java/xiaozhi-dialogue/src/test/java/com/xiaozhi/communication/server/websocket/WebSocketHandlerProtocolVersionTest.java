@@ -54,6 +54,44 @@ class WebSocketHandlerProtocolVersionTest {
     }
 
     @Test
+    void helloWaitsForModelPreparationAndNeverReportsReadyOnFailure() throws Exception {
+        var persona = org.mockito.Mockito.mock(com.xiaozhi.dialogue.runtime.Persona.class);
+        chatSession.setPersona(persona);
+        var prepared = new java.util.concurrent.CompletableFuture<Void>();
+        org.mockito.Mockito.when(persona.prepareConnection()).thenReturn(prepared);
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"hello\",\"version\":1}"));
+        var messages = ArgumentCaptor.forClass(WebSocketMessage.class);
+        verify(springSession).sendMessage(messages.capture());
+        assertThat(messages.getValue().getPayload().toString()).contains("preparing").doesNotContain("\"ready\":true");
+        prepared.complete(null);
+        verify(springSession, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
+        assertThat(messages.getValue().getPayload().toString()).contains("\"ready\":true");
+    }
+
+    @Test
+    void authenticatedAppWithoutPersonaCannotBeReportedReady() throws Exception {
+        chatSession.getDevice().setDeviceId("user_chat_7");
+        chatSession.getDevice().setUserId(7);
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"hello\"}"));
+        var messages = ArgumentCaptor.forClass(WebSocketMessage.class);
+        verify(springSession).sendMessage(messages.capture());
+        assertThat(messages.getValue().getPayload().toString()).contains("failed").doesNotContain("\"ready\":true");
+        verify(sessionManager).closeSession(chatSession);
+    }
+
+    @Test
+    void failedModelPreparationClosesInsteadOfSendingHelloReady() throws Exception {
+        var persona = org.mockito.Mockito.mock(com.xiaozhi.dialogue.runtime.Persona.class);
+        chatSession.setPersona(persona);
+        org.mockito.Mockito.when(persona.prepareConnection()).thenReturn(java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("unavailable")));
+        handler.handleTextMessage(springSession, new TextMessage("{\"type\":\"hello\"}"));
+        var messages = ArgumentCaptor.forClass(WebSocketMessage.class);
+        verify(springSession).sendMessage(messages.capture());
+        assertThat(messages.getValue().getPayload().toString()).contains("failed").doesNotContain("\"ready\":true");
+        verify(sessionManager).closeSession(chatSession);
+    }
+
+    @Test
     void musicPlaybackKeepsRegisteredMusicSessionAlive() throws Exception {
         chatSession.getDevice().setRoleId(1);
         var holder = org.mockito.Mockito.mock(com.xiaozhi.ai.tool.ToolsSessionHolder.class);

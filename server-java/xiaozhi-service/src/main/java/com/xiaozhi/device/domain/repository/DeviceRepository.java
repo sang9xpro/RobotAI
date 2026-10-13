@@ -4,6 +4,7 @@ import com.xiaozhi.device.domain.Device;
 import com.xiaozhi.device.domain.vo.VerifyCode;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -13,6 +14,9 @@ public interface DeviceRepository {
 
     /** 按设备 ID 加载聚合根 */
     Optional<Device> findById(String deviceId);
+
+    /** Fresh, ordered row locks for an atomic administrative ownership change. */
+    List<Device> lockByIds(List<String> deviceIds);
 
     /** 按验证码查询（设备激活场景） */
     Optional<VerifyCode> findVerifyCode(String code, String deviceId, String sessionId);

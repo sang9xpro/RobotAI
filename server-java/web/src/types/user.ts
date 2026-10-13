@@ -1,5 +1,6 @@
 import type { PageQueryParams } from './api'
 import type { AuthRole, PermissionTreeNode } from './authRole'
+import type { Device } from './device'
 
 /**
  * 用户信息，字段对应后端 UserResp
@@ -59,4 +60,25 @@ export interface UpdateUserParams {
   oldPassword?: string // 原密码，改密码时必传，后端凭它校验
   password?: string // 密码字段
   avatar?: string // 头像字段
+}
+
+export interface RobotAssignment {
+  deviceId: string
+  expectedUserId: number | null
+}
+
+export interface AdminRobot extends Device {
+  userId: number | null
+  username?: string
+  ownerName?: string
+}
+
+export interface AdminUserInput {
+  username?: string
+  password?: string
+  name?: string
+  email?: string
+  tel?: string
+  authRoleId?: number
+  devices?: RobotAssignment[]
 }

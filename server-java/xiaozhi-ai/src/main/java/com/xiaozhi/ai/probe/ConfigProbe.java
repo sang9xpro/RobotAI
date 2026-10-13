@@ -4,6 +4,9 @@ import com.xiaozhi.ai.llm.factory.ChatModelFactory;
 import com.xiaozhi.ai.stt.SttResult;
 import com.xiaozhi.ai.stt.SttService;
 import com.xiaozhi.ai.stt.SttServiceFactory;
+import com.xiaozhi.ai.tts.TtsServiceFactory;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import com.xiaozhi.common.model.bo.ConfigBO;
 import com.xiaozhi.common.model.bo.ConfigProbeResultBO;
 import com.xiaozhi.common.model.bo.RoleBO;
@@ -15,7 +18,6 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
 import org.springframework.stereotype.Component;
-import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientResponseException;
 import reactor.core.publisher.Flux;
@@ -56,9 +58,6 @@ public class ConfigProbe {
 
     /** 语音样本说的内容 */
     static final String SPEECH_TEXT = "你好";
-
-    /** 配合图片样本的提问 */
-    static final String IMAGE_QUESTION = "这张图片里有什么？请用一句话描述，说明形状和颜色。";
 
     /** 60ms 一帧，与设备上行 VAD 输出的分片粒度一致 */
     private static final int FRAME_BYTES = 1920;
@@ -152,13 +151,6 @@ public class ConfigProbe {
             + "PDk5ODtCSVJZXlRNSkZGSldoaG9lWVFVWVxpcW1nb+jf2tbSz9DS0MrDwMHBxcTFxsnMzdfg+WxrXldYVFZcX19fYFpaUE5P"
             + "T1RVZvze2dDT3e7t/fLs39rp7W5dXQ==";
 
-    /** 图片样本：64x64 白底红色实心圆的 PNG */
-    private static final String IMAGE_PNG_BASE64 =
-            "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAArklEQVR42u3a0Q2EMAwE0e2/RnoBKjgM4fBmMxEFzJPyATba"
-            + "Jz8CAAAAAAAAAPw4mzQT4MytPHaAYvc/JOpKf4uh9vpBgxzqRwxySB9hyKr+gWExwAf1dw0yrL9lkGd93bAGoKW+aADgD2is"
-            + "rxgAAACQDWivvzRwhQAAAOAO4HUaAN/EEYDp50IJkzmGux6A6fcDCRuakB1ZwpYyYU8csqnP+Vfi+wMAAAAAANYGHLraNIF8"
-            + "KFcaAAAAAElFTkSuQmCC";
-
     private static final byte[] SPEECH_PCM = decodeMulaw(Base64.getDecoder().decode(SPEECH_MULAW_BASE64));
 
     @Resource
@@ -170,6 +162,9 @@ public class ConfigProbe {
     @Resource
     private ProviderTokenClient tokenClient;
 
+    @Resource
+    private TtsServiceFactory ttsServiceFactory;
+
     /**
      * 试拨一份配置：配置类型只支持 llm/stt，其余类型直接拒绝。
      * <p>接口地址由调用方直接给，本进程能连到哪就能试到哪；私网地址是自建模型（Ollama、vLLM、MinIO 等）
@@ -178,8 +173,12 @@ public class ConfigProbe {
      * 传进来之前先自行拷贝。
      */
     public ConfigProbeResultBO probe(ConfigBO config) {
+        return probe(config, "alloy", "Xin chào, đây là bài kiểm tra giọng nói RobotAI.");
+    }
+
+    public ConfigProbeResultBO probe(ConfigBO config, String voiceName, String text) {
         String configType = config.getConfigType();
-        if (!"llm".equals(configType) && !"stt".equals(configType)) {
+        if (!"llm".equals(configType) && !"stt".equals(configType) && !"tts".equals(configType)) {
             return ConfigProbeResultBO.failure("暂不支持测试该类型配置");
         }
         String unsupportedEndpoint = unsupportedEndpointMessage(config.getApiUrl());
@@ -187,6 +186,9 @@ public class ConfigProbe {
             return ConfigProbeResultBO.failure(unsupportedEndpoint);
         }
         try {
+            if ("tts".equals(configType)) {
+                return testTts(config, voiceName, text);
+            }
             if ("stt".equals(configType)) {
                 return testStt(config);
             }
@@ -196,14 +198,48 @@ public class ConfigProbe {
                 return ConfigProbeResultBO.success("连接成功，返回向量维度：" + vector.length);
             }
             if (ConfigBO.ModelType.vision.getValue().equals(config.getModelType())) {
-                return testVision(config);
+                return probeVision(config, text, null);
             }
             ChatModel chatModel = chatModelFactory.createChatModel(config, new RoleBO());
-            ChatResponse response = chatModel.call(new Prompt(new UserMessage("你好，这是一次配置测试，请用一句话回复。")));
+            ChatResponse response = chatModel.call(new Prompt(new UserMessage(StringUtils.hasText(text) ? text : "Xin chào, hãy trả lời ngắn gọn bằng tiếng Việt.")));
             String reply = extractReply(response);
-            return ConfigProbeResultBO.success("连接成功，模型返回：" + reply);
+            return StringUtils.hasText(reply) ? ConfigProbeResultBO.success(reply) : ConfigProbeResultBO.failure("LLM returned an empty answer");
         } catch (Exception e) {
             log.warn("配置测试失败 - provider: {}, model: {}", config.getProvider(), config.getConfigName(), e);
+            return ConfigProbeResultBO.failure(extractErrorMessage(e));
+        }
+    }
+
+    private ConfigProbeResultBO testTts(ConfigBO config, String voiceName, String text) throws Exception {
+        config.setConfigId(nextTransientConfigId());
+        Path audio = null;
+        try {
+            var service = ttsServiceFactory.createApiService(config,
+                    StringUtils.hasText(voiceName) ? voiceName : "alloy", 1.0, 1.0);
+            audio = service.textToSpeech(StringUtils.hasText(text) ? text : "Xin chào RobotAI.");
+            if (audio == null || !Files.isRegularFile(audio) || Files.size(audio) == 0)
+                return ConfigProbeResultBO.failure("TTS did not return audio");
+            return ConfigProbeResultBO.success("TTS synthesis succeeded (" + Files.size(audio) + " bytes)");
+        } finally {
+            if (audio != null) Files.deleteIfExists(audio);
+            ttsServiceFactory.removeCache(config);
+            tokenClient.removeCache(config);
+        }
+    }
+
+    public ConfigProbeResultBO probeSttAudio(ConfigBO config, byte[] pcm) {
+        if (!"stt".equals(config.getConfigType())) return ConfigProbeResultBO.failure("STT configuration required");
+        String unsupportedEndpoint = unsupportedEndpointMessage(config.getApiUrl());
+        if (unsupportedEndpoint != null) return ConfigProbeResultBO.failure(unsupportedEndpoint);
+        if (pcm == null || pcm.length == 0 || pcm.length % 2 != 0 || pcm.length > 960000)
+            return ConfigProbeResultBO.failure("Audio must be PCM 16 kHz mono, maximum 30 seconds");
+        try {
+            List<byte[]> frames = new ArrayList<>();
+            for (int offset = 0; offset < pcm.length; offset += FRAME_BYTES) {
+                frames.add(Arrays.copyOfRange(pcm, offset, Math.min(offset + FRAME_BYTES, pcm.length)));
+            }
+            return testStt(config, frames);
+        } catch (Exception e) {
             return ConfigProbeResultBO.failure(extractErrorMessage(e));
         }
     }
@@ -212,13 +248,17 @@ public class ConfigProbe {
      * 语音识别测试：把一段内嵌的 16k 单声道 PCM 当作一轮语音喂给识别服务，返回识别文本。
      */
     private ConfigProbeResultBO testStt(ConfigBO config) {
+        return testStt(config, speechFrames());
+    }
+
+    private ConfigProbeResultBO testStt(ConfigBO config, List<byte[]> frames) {
         // 表单里的临时凭据不能进 provider 缓存，configId 也不能带真实值去动线上连接与 Token 缓存
         config.setConfigId(nextTransientConfigId());
         SttResult result;
         try {
             SttService sttService = sttServiceFactory.createTransientSttService(config);
             // 按设备上行的节奏送帧，识别服务按实时流限速时才不会拒收
-            result = sttService.stream(Flux.fromIterable(speechFrames()).delayElements(FRAME_INTERVAL));
+            result = sttService.stream(Flux.fromIterable(frames).delayElements(FRAME_INTERVAL));
         } finally {
             // 临时凭据换来的连接与 Token 用完即弃，不留在按 configId 键控的共享缓存里
             sttServiceFactory.removeCache(config);
@@ -233,37 +273,49 @@ public class ConfigProbe {
         if (!StringUtils.hasText(result.text())) {
             return ConfigProbeResultBO.failure("连接正常但没有识别出文本，请确认该模型支持 16kHz 中文语音");
         }
-        return ConfigProbeResultBO.success("识别成功，测试语音说的是「" + SPEECH_TEXT + "」，识别结果：" + result.text());
+        return ConfigProbeResultBO.success("Nhận dạng thành công: " + result.text());
     }
 
-    private static int nextTransientConfigId() {
+    public static int nextTransientConfigId() {
         return Integer.MIN_VALUE + (TRANSIENT_CONFIG_ID_SEQ.getAndIncrement() & Integer.MAX_VALUE);
     }
 
     private String sttFailureMessage(String failureReason) {
         return switch (failureReason) {
+            case "unauthorized" -> "STT từ chối xác thực (401/403). Kiểm tra API key và quyền tài khoản.";
+            case "rate_limited" -> "STT đã đạt giới hạn tốc độ hoặc quota (429).";
+            case "model_unavailable" -> "Endpoint hoặc model STT không tồn tại (404).";
             case SttResult.FAILURE_UPSTREAM_ERROR -> "识别服务返回错误，请检查密钥、接口地址与网络";
             case SttResult.FAILURE_TIMEOUT -> "等待识别结果超时，请检查网络与服务可用性";
             default -> "本地识别处理异常，详情见服务端日志";
         };
     }
 
-    /**
-     * 视觉模型测试：带一张内嵌图片提问，验证图片通道而非只验证文本通道。
-     */
-    private ConfigProbeResultBO testVision(ConfigBO config) {
-        ChatModel chatModel = chatModelFactory.createChatModel(config, new RoleBO());
-        Media image = Media.builder()
-                .mimeType(MimeTypeUtils.IMAGE_PNG)
-                .data(imagePng())
-                .build();
-        UserMessage message = UserMessage.builder()
-                .media(image)
-                .text(IMAGE_QUESTION)
-                .build();
-        ChatResponse response = chatModel.call(new Prompt(message));
-        String reply = extractReply(response);
-        return ConfigProbeResultBO.success("连接成功，测试图片是白底红色实心圆，模型返回：" + reply);
+    /** Test the entered question, optionally with a validated image supplied by the caller. */
+    public ConfigProbeResultBO probeVision(ConfigBO config, String text, Media image) {
+        if (!"llm".equals(config.getConfigType())
+                || !ConfigBO.ModelType.vision.getValue().equals(config.getModelType())) {
+            return ConfigProbeResultBO.failure("Vui lòng chọn cấu hình mô hình thị giác (Vision).");
+        }
+        if (!StringUtils.hasText(text)) {
+            return ConfigProbeResultBO.failure("Vui lòng nhập nội dung thử.");
+        }
+        String unsupportedEndpoint = unsupportedEndpointMessage(config.getApiUrl());
+        if (unsupportedEndpoint != null) return ConfigProbeResultBO.failure(unsupportedEndpoint);
+        try {
+            ChatModel chatModel = chatModelFactory.createChatModel(config, new RoleBO());
+            var builder = UserMessage.builder().text(text);
+            if (image != null) builder.media(image);
+            String reply = extractReply(chatModel.call(new Prompt(builder.build())));
+            if (!StringUtils.hasText(reply)) {
+                return ConfigProbeResultBO.failure("Mô hình không trả về nội dung phản hồi.");
+            }
+            String outcome = image == null ? "Kiểm tra văn bản thành công." : "Kiểm tra Vision thành công.";
+            return ConfigProbeResultBO.success(outcome + " Phản hồi mô hình: " + reply);
+        } catch (Exception e) {
+            log.warn("Vision config test failed - provider: {}, model: {}", config.getProvider(), config.getConfigName(), e);
+            return ConfigProbeResultBO.failure(extractErrorMessage(e));
+        }
     }
 
     /**
@@ -272,7 +324,7 @@ public class ConfigProbe {
      */
     private String extractReply(ChatResponse response) {
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
-            throw new EmptyModelResponseException("模型未返回有效结果，请检查密钥、接口地址与模型名称是否正确");
+            throw new EmptyModelResponseException("Mô hình không trả về kết quả hợp lệ. Kiểm tra API key, địa chỉ API và tên mô hình.");
         }
         return response.getResult().getOutput().getText();
     }
@@ -299,11 +351,11 @@ public class ConfigProbe {
         try {
             uri = URI.create(apiUrl.trim());
         } catch (IllegalArgumentException e) {
-            return "接口地址格式不正确";
+            return "Địa chỉ API không đúng định dạng.";
         }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!SUPPORTED_ENDPOINT_SCHEMES.contains(scheme)) {
-            return "接口地址只支持 http/https/ws/wss";
+            return "Địa chỉ API chỉ hỗ trợ http/https/ws/wss.";
         }
         // 主机名不在这里挑剔：URI 的解析比实际能连的地址严（如带下划线的容器名），拦下来会误伤正常配置
         return null;
@@ -324,23 +376,23 @@ public class ConfigProbe {
             }
             t = t.getCause();
         }
-        return "连接测试失败，详情见服务端日志";
+        return "Kiểm tra kết nối thất bại. Xem chi tiết trong log máy chủ.";
     }
 
     private String upstreamFailureMessage(int status) {
         if (status == 401 || status == 403) {
-            return "接口返回未授权（" + status + "），请检查密钥与账号权限";
+            return "API từ chối xác thực (" + status + "). Kiểm tra API key và quyền tài khoản.";
         }
         if (status == 404) {
-            return "接口地址或模型名称不存在（404），请检查后重试";
+            return "Địa chỉ API hoặc mô hình không tồn tại (404). Kiểm tra cấu hình rồi thử lại.";
         }
         if (status == 429) {
-            return "接口返回限流（429），请稍后再试";
+            return "API đã đạt giới hạn tốc độ hoặc quota (429). Vui lòng thử lại sau.";
         }
         if (status >= 500) {
-            return "接口返回服务端错误（" + status + "），请稍后再试或联系服务商";
+            return "API gặp lỗi máy chủ (" + status + "). Thử lại sau hoặc liên hệ nhà cung cấp.";
         }
-        return "接口返回错误（" + status + "），请检查接口地址、密钥与模型名称";
+        return "API trả về lỗi (" + status + "). Kiểm tra địa chỉ API, API key và tên mô hình.";
     }
 
     /**
@@ -358,13 +410,6 @@ public class ConfigProbe {
             frames.add(new byte[FRAME_BYTES]);
         }
         return frames;
-    }
-
-    /**
-     * 测试图片的 PNG 字节。
-     */
-    static byte[] imagePng() {
-        return Base64.getDecoder().decode(IMAGE_PNG_BASE64);
     }
 
     /**

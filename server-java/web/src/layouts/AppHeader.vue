@@ -12,7 +12,7 @@ import {
 } from '@ant-design/icons-vue'
 import { useUserStore } from '@/store/user'
 import { useAvatar } from '@/composables/useAvatar'
-import { useLocale } from '@/composables/useLocale'
+import { type LocaleType, useLocale } from '@/composables/useLocale'
 import { useAntdTheme } from '@/composables/useAntdTheme'
 import { useAuth } from '@/composables/useAuth'
 import { ROUTES } from '@/router/routes'
@@ -68,7 +68,7 @@ function goToAccount() {
  * 切换语言
  */
 function handleLocaleChange(locale: string) {
-  setLocale(locale as 'zh-CN' | 'en-US')
+  setLocale(locale as LocaleType)
 }
 
 /**

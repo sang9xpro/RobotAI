@@ -14,6 +14,7 @@ import jakarta.validation.constraints.NotNull;
         visible = true,
         defaultImpl = UnknownMessage.class)
 @JsonSubTypes({
+        @JsonSubTypes.Type(value = PlaybackMessage.class, name = "playback"),
         @JsonSubTypes.Type(value = HelloMessage.class, name = "hello"),
         @JsonSubTypes.Type(value = DeviceMcpMessage.class, name = "mcp"),
         @JsonSubTypes.Type(value = ListenMessage.class, name = "listen"),
@@ -26,7 +27,7 @@ import jakarta.validation.constraints.NotNull;
 })
 public sealed abstract class Message
         permits AbortMessage, GoodbyeMessage, HelloMessage, IotMessage, ListenMessage, DeviceMcpMessage,
-                PingMessage, MusicPlaybackMessage, UnknownMessage {
+                PingMessage, MusicPlaybackMessage, PlaybackMessage, UnknownMessage {
 
     public Message() {
         this.type = "unknown";
@@ -38,5 +39,8 @@ public sealed abstract class Message
 
     @NotNull(message = "消息类型不能为空")
     protected String type;
+    @com.fasterxml.jackson.annotation.JsonProperty("session_id")
+    private String sessionId;
+    private Long generation;
 
 }

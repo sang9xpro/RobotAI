@@ -36,6 +36,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.xiaozhi.monitoring",
         "com.xiaozhi.role",
         "com.xiaozhi.summary",
+        "com.xiaozhi.memory.service",
         "com.xiaozhi.task",
         "com.xiaozhi.verifycode",
         // xiaozhi-ai

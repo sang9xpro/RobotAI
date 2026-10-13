@@ -22,11 +22,19 @@ import java.util.Objects;
 @RestController
 @RequestMapping("/api/robot")
 public class RobotCompanionController extends BaseController {
+    @Resource private com.xiaozhi.common.port.PersonalMemoryStore personalMemoryStore;
     @Resource private RoleService roleService;
     @Resource private SummaryService summaryService;
     @Resource private SummaryConvert summaryConvert;
     @Resource private VisionService visionService;
     @Resource private RobotWeatherClient weatherClient;
+
+    @DeleteMapping("/people/{personId}")
+    public ApiResponse<Void> forgetPerson(@PathVariable String personId) {
+        StpUtil.checkLogin();int user=StpUtil.getLoginIdAsInt();
+        personalMemoryStore.forgetPerson(user,"user_chat_"+user,personId);
+        return ApiResponse.success("Đã xóa ký ức riêng");
+    }
 
     @GetMapping("/weather")
     public ApiResponse<RobotWeatherResp> weather(@RequestParam double latitude, @RequestParam double longitude)

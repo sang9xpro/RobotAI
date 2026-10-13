@@ -1,0 +1,330 @@
+[
+  {
+    "query": "N20",
+    "total": 6,
+    "items": [
+      {
+        "id": "converter_dcdc_traco_ten20_xxxx_n4_tht",
+        "name": "Converter DCDC TRACO TEN20 xxxx N4 THT",
+        "category": "electronics",
+        "family": "converter-dcdc",
+        "standard": null,
+        "attributes": {},
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/converter_dcdc_traco_ten20_xxxx_n4_tht.step",
+        "pageUrl": "https://www.step.parts/parts/converter_dcdc_traco_ten20_xxxx_n4_tht",
+        "apiUrl": "https://api.step.parts/v1/parts/converter_dcdc_traco_ten20_xxxx_n4_tht",
+        "sha256": "3ddb6506999044088d4e40e53be932eeb707bda9103cf8bd56420d359e770f73"
+      },
+      {
+        "id": "converter_dcdc_traco_ten20_xxxx_dual_tht",
+        "name": "Converter DCDC TRACO TEN20 xxxx Dual THT",
+        "category": "electronics",
+        "family": "converter-dcdc",
+        "standard": null,
+        "attributes": {},
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/converter_dcdc_traco_ten20_xxxx_dual_tht.step",
+        "pageUrl": "https://www.step.parts/parts/converter_dcdc_traco_ten20_xxxx_dual_tht",
+        "apiUrl": "https://api.step.parts/v1/parts/converter_dcdc_traco_ten20_xxxx_dual_tht",
+        "sha256": "bbd3aab87939b2863aa7f8c1901ac97cb0038b076c54bccfe7cab480140b1198"
+      },
+      {
+        "id": "converter_dcdc_traco_ten20_xxxx_single_tht",
+        "name": "Converter DCDC TRACO TEN20 xxxx Single THT",
+        "category": "electronics",
+        "family": "converter-dcdc",
+        "standard": null,
+        "attributes": {},
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/converter_dcdc_traco_ten20_xxxx_single_tht.step",
+        "pageUrl": "https://www.step.parts/parts/converter_dcdc_traco_ten20_xxxx_single_tht",
+        "apiUrl": "https://api.step.parts/v1/parts/converter_dcdc_traco_ten20_xxxx_single_tht",
+        "sha256": "6d0493b83d98a88252803b460de89984830af834e55aeec7983c9cf4655a4d6c"
+      },
+      {
+        "id": "converter_dcdc_traco_ten20_xxxx_tht",
+        "name": "Converter DCDC TRACO TEN20 xxxx THT",
+        "category": "electronics",
+        "family": "converter-dcdc",
+        "standard": null,
+        "attributes": {},
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/converter_dcdc_traco_ten20_xxxx_tht.step",
+        "pageUrl": "https://www.step.parts/parts/converter_dcdc_traco_ten20_xxxx_tht",
+        "apiUrl": "https://api.step.parts/v1/parts/converter_dcdc_traco_ten20_xxxx_tht",
+        "sha256": "05809062fed145a5c235221a2ce05f7400a7d4f4ffdeb52d7263005658211be6"
+      },
+      {
+        "id": "texas_rgy_r_pvqfn_n20_ep2_05x3_05mm",
+        "name": "Texas RGY R-PVQFN-N20 EP2.05x3.05mm",
+        "category": "electronics",
+        "family": "package-dfn-qfn",
+        "standard": null,
+        "attributes": {
+          "model": "Texas_RGY_R-PVQFN-N20_EP2.05x3.05mm"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/texas_rgy_r_pvqfn_n20_ep2_05x3_05mm.step",
+        "pageUrl": "https://www.step.parts/parts/texas_rgy_r_pvqfn_n20_ep2_05x3_05mm",
+        "apiUrl": "https://api.step.parts/v1/parts/texas_rgy_r_pvqfn_n20_ep2_05x3_05mm",
+        "sha256": "5f9141acb241446ee032c6c1dbc17894b43628e5684401c1713debe65b3a11f4"
+      }
+    ]
+  },
+  {
+    "query": "micro metal gearmotor",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "HS-225MG",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "225MG",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "Hitec",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "VL53L4CD",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "VL53L0X",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "ESP32 S3",
+    "total": 7,
+    "items": [
+      {
+        "id": "esp32_c3_wroom_02",
+        "name": "ESP32-C3-WROOM-02",
+        "category": "electronics",
+        "family": "rf-module",
+        "standard": null,
+        "attributes": {
+          "model": "ESP32-C3-WROOM-02"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/esp32_c3_wroom_02.step",
+        "pageUrl": "https://www.step.parts/parts/esp32_c3_wroom_02",
+        "apiUrl": "https://api.step.parts/v1/parts/esp32_c3_wroom_02",
+        "sha256": "4603a8da31a255b48befbb27a8ef51a8e53c079d2819fc9092fb1d1d3d31a828"
+      },
+      {
+        "id": "esp32_c3_wroom_02u",
+        "name": "ESP32-C3-WROOM-02 U",
+        "category": "electronics",
+        "family": "rf-module",
+        "standard": null,
+        "attributes": {
+          "model": "ESP32-C3-WROOM-02U"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/esp32_c3_wroom_02u.step",
+        "pageUrl": "https://www.step.parts/parts/esp32_c3_wroom_02u",
+        "apiUrl": "https://api.step.parts/v1/parts/esp32_c3_wroom_02u",
+        "sha256": "9ce581fd0ccc0bfe7c4e7aea8a327205be2bf9b583da2d56183b660ea51141bd"
+      },
+      {
+        "id": "esp32_s3_wroom_1",
+        "name": "ESP32-S3-WROOM-1",
+        "category": "electronics",
+        "family": "rf-module",
+        "standard": null,
+        "attributes": {
+          "model": "ESP32-S3-WROOM-1"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/esp32_s3_wroom_1.step",
+        "pageUrl": "https://www.step.parts/parts/esp32_s3_wroom_1",
+        "apiUrl": "https://api.step.parts/v1/parts/esp32_s3_wroom_1",
+        "sha256": "b99ed9efcaaa4ffd5b27b3afae86fb146662d6f2f3078a55d5495a75cb4997c3"
+      },
+      {
+        "id": "esp32_s3_wroom_2",
+        "name": "ESP32-S3-WROOM-2",
+        "category": "electronics",
+        "family": "rf-module",
+        "standard": null,
+        "attributes": {
+          "model": "ESP32-S3-WROOM-2"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/esp32_s3_wroom_2.step",
+        "pageUrl": "https://www.step.parts/parts/esp32_s3_wroom_2",
+        "apiUrl": "https://api.step.parts/v1/parts/esp32_s3_wroom_2",
+        "sha256": "12a4b60e07a53291327d5b91d1171cfd16edd074c28f86a5a8b79e8d4abef087"
+      },
+      {
+        "id": "esp32_wroom_32",
+        "name": "ESP32-WROOM-32",
+        "category": "electronics",
+        "family": "rf-module",
+        "standard": null,
+        "attributes": {
+          "model": "ESP32-WROOM-32"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/esp32_wroom_32.step",
+        "pageUrl": "https://www.step.parts/parts/esp32_wroom_32",
+        "apiUrl": "https://api.step.parts/v1/parts/esp32_wroom_32",
+        "sha256": "77304334bb1021379e93052dc850101b8bdb990d03fa7ab40160fd9ffdef3401"
+      }
+    ]
+  },
+  {
+    "query": "DRV8833",
+    "total": 0,
+    "items": []
+  },
+  {
+    "query": "623ZZ",
+    "total": 2,
+    "items": [
+      {
+        "id": "bearing_623zz",
+        "name": "623ZZ ball bearing",
+        "category": "bearing",
+        "family": "deep-groove-ball-bearing",
+        "standard": null,
+        "attributes": {
+          "bearingCode": "623ZZ",
+          "sealType": "ZZ",
+          "shielded": true,
+          "nominalSize": "623ZZ"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/bearing_623zz.step",
+        "pageUrl": "https://www.step.parts/parts/bearing_623zz",
+        "apiUrl": "https://api.step.parts/v1/parts/bearing_623zz",
+        "sha256": "2d5722b56a3e31d0582df451457028009af1c7e1beedd8874006c72e5f38ff78"
+      },
+      {
+        "id": "bearing_f623zz",
+        "name": "F623ZZ flanged ball bearing",
+        "category": "bearing",
+        "family": "flanged-ball-bearing",
+        "standard": null,
+        "attributes": {
+          "bearingCode": "F623ZZ",
+          "sealType": "ZZ",
+          "shielded": true,
+          "flanged": true,
+          "nominalSize": "F623ZZ"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/bearing_f623zz.step",
+        "pageUrl": "https://www.step.parts/parts/bearing_f623zz",
+        "apiUrl": "https://api.step.parts/v1/parts/bearing_f623zz",
+        "sha256": "8c198b25ee372df4c0a111772d515bd7bee3dadf405141827a8067a3a558ba07"
+      }
+    ]
+  },
+  {
+    "query": "M3 12",
+    "total": 36,
+    "items": [
+      {
+        "id": "iso10642_socket_countersunk_screw_m3x12",
+        "name": "ISO 10642 hex socket countersunk screw, M3 x 12",
+        "category": "fastener",
+        "family": "countersunk-screw",
+        "standard": {
+          "body": "ISO",
+          "number": "10642",
+          "designation": "ISO 10642"
+        },
+        "attributes": {
+          "thread": "M3",
+          "lengthMm": 12,
+          "nominalSize": "M3 x 12",
+          "headStyle": "countersunk",
+          "driveStyle": "hex-socket"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/iso10642_socket_countersunk_screw_m3x12.step",
+        "pageUrl": "https://www.step.parts/parts/iso10642_socket_countersunk_screw_m3x12",
+        "apiUrl": "https://api.step.parts/v1/parts/iso10642_socket_countersunk_screw_m3x12",
+        "sha256": "5b4864c7af57e387276f29fb1a3ae5270c749a86e576841ae8a900e080b6ea3c"
+      },
+      {
+        "id": "iso4762_socket_head_cap_screw_m3x12",
+        "name": "ISO 4762 socket head cap screw, M3 x 12",
+        "category": "fastener",
+        "family": "socket-head-cap-screw",
+        "standard": {
+          "body": "ISO",
+          "number": "4762",
+          "designation": "ISO 4762"
+        },
+        "attributes": {
+          "thread": "M3",
+          "lengthMm": 12,
+          "nominalSize": "M3 x 12",
+          "headStyle": "socket-head",
+          "driveStyle": "hex-socket"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/iso4762_socket_head_cap_screw_m3x12.step",
+        "pageUrl": "https://www.step.parts/parts/iso4762_socket_head_cap_screw_m3x12",
+        "apiUrl": "https://api.step.parts/v1/parts/iso4762_socket_head_cap_screw_m3x12",
+        "sha256": "7720179ea94ed5c4e2b32f6e4c2583a77423240599c602690c5b2b2f5471cc47"
+      },
+      {
+        "id": "din125_flat_washer_m3",
+        "name": "DIN 125 flat washer, M3",
+        "category": "fastener",
+        "family": "flat-washer",
+        "standard": {
+          "body": "DIN",
+          "number": "125",
+          "designation": "DIN 125"
+        },
+        "attributes": {
+          "thread": "M3",
+          "nominalSize": "M3",
+          "washerStyle": "flat"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/din125_flat_washer_m3.step",
+        "pageUrl": "https://www.step.parts/parts/din125_flat_washer_m3",
+        "apiUrl": "https://api.step.parts/v1/parts/din125_flat_washer_m3",
+        "sha256": "df57fbc49f55dd15c2780249a178c36e005ac299762d6def9f2c5b11fc8f7aff"
+      },
+      {
+        "id": "hex_standoff_m3_12mm_male_female",
+        "name": "Hex standoff, M3, 12 mm, male-female",
+        "category": "spacer",
+        "family": "hex-standoff",
+        "standard": null,
+        "attributes": {
+          "thread": "M3",
+          "nominalSize": "M3",
+          "lengthMm": 12,
+          "shape": "hex",
+          "gender": "male-female"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/hex_standoff_m3_12mm_male_female.step",
+        "pageUrl": "https://www.step.parts/parts/hex_standoff_m3_12mm_male_female",
+        "apiUrl": "https://api.step.parts/v1/parts/hex_standoff_m3_12mm_male_female",
+        "sha256": "82e077afe723f42b20434c935cfdf4a643c7786feaadb2399de8c74f54dbf1d6"
+      },
+      {
+        "id": "din127_class_b_m30growerwasher",
+        "name": "DIN 127 class B spring/grower washer, M30",
+        "category": "fastener",
+        "family": "spring-washer",
+        "standard": {
+          "body": "DIN",
+          "number": "127",
+          "designation": "DIN 127"
+        },
+        "attributes": {
+          "thread": "M30",
+          "washerStyle": "spring",
+          "nominalSize": "M30"
+        },
+        "stepUrl": "https://media.githubusercontent.com/media/earthtojake/step.parts/c6113328a5695b976a010a203a90fe86191769bf/catalog/step/din127_class_b_m30growerwasher.step",
+        "pageUrl": "https://www.step.parts/parts/din127_class_b_m30growerwasher",
+        "apiUrl": "https://api.step.parts/v1/parts/din127_class_b_m30growerwasher",
+        "sha256": "c9314b9c00e508b99f4f95f21fd33e0bddd6b1cd697077c91947754da6294934"
+      }
+    ]
+  }
+]

@@ -10,6 +10,9 @@ export type MessageSender = 'user' | 'assistant' | 'tool'
  */
 export interface Message {
   messageId: number
+  userId?: number
+  username?: string
+  ownerName?: string
   deviceId: string
   deviceName?: string
   sender: MessageSender

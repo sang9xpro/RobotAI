@@ -15,7 +15,7 @@ const { openKeys, selectedKeys, menuItems, handleOpenChange, handleMenuClick } =
 function getMenuTitle(title?: string) {
   if (!title) return ''
   // 如果是多语言键，则翻译；否则直接返回
-  return title.startsWith('router.') ? t(title) : title
+  return title.startsWith('router.') || title.startsWith('robotai.') ? t(title) : title
 }
 </script>
 
@@ -24,7 +24,7 @@ function getMenuTitle(title?: string) {
     <!-- Logo -->
     <div class="sidebar-logo">
       <router-link to="/dashboard" class="logo-link">
-        <img src="/logo.png" alt="Logo" class="logo-image" />
+        <img src="/robotai.svg" alt="RobotAI" class="logo-image" />
       </router-link>
     </div>
 

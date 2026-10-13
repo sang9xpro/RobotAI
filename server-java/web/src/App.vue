@@ -14,7 +14,7 @@ const { antdTheme } = useAntdTheme()
 watch(
   currentLocale,
   (locale) => {
-    dayjs.locale(locale === 'zh-CN' ? 'zh-cn' : 'en')
+    dayjs.locale({ 'vi-VN': 'vi', 'zh-CN': 'zh-cn', 'en-US': 'en' }[locale])
   },
   { immediate: true }
 )

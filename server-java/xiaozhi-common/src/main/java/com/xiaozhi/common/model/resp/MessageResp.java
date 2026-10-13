@@ -15,6 +15,10 @@ public class MessageResp {
     @Schema(description = "消息ID")
     private Long messageId;
 
+    private Integer userId;
+    private String username;
+    private String ownerName;
+
     @Schema(description = "设备ID")
     private String deviceId;
 

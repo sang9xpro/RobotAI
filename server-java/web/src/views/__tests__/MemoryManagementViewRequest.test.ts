@@ -12,11 +12,13 @@ const memoryApiMock = vi.hoisted(() => ({
 const roleApiMock = vi.hoisted(() => ({ queryRoles: vi.fn() }))
 const deviceApiMock = vi.hoisted(() => ({ queryDevices: vi.fn() }))
 const messageApiMock = vi.hoisted(() => ({ deleteMessage: vi.fn() }))
+const robotMemoryMock = vi.hoisted(() => ({ updateRobotSummary: vi.fn() }))
 
 vi.mock('@/services/memory', () => memoryApiMock)
 vi.mock('@/services/role', () => roleApiMock)
 vi.mock('@/services/device', () => deviceApiMock)
 vi.mock('@/services/message', () => messageApiMock)
+vi.mock('@/services/robotMemory', () => robotMemoryMock)
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/memory/chat', query: { tab: 'summary' } }),
   useRouter: () => ({ push: vi.fn() }),
@@ -24,6 +26,8 @@ vi.mock('vue-router', () => ({
 }))
 
 import MemoryManagementView from '../MemoryManagementView.vue'
+import { useUserStore } from '@/store/user'
+import type { SummaryMemory } from '@/types/memory'
 
 // <script setup> 的绑定不能经 vm 写回，改值要直接落到 setupState
 interface ViewState {
@@ -31,6 +35,11 @@ interface ViewState {
   handleTabChange: () => Promise<void>
   memoryType: 'chat' | 'summary'
   selectedDeviceId: string
+  canEditSummary: (record: SummaryMemory) => boolean
+  openSummary: (record: SummaryMemory) => void
+  submitSummary: () => Promise<void>
+  editRecord?: SummaryMemory
+  editText: string
 }
 
 async function mountView() {
@@ -110,5 +119,31 @@ describe('MemoryManagementView 请求迁移', () => {
     expect(message.success).not.toHaveBeenCalledWith('common.deleteSuccess')
     expect(message.error).toHaveBeenCalledWith('记忆不存在')
     expect(memoryApiMock.querySummaryMemory.mock.calls.length).toBe(queriesBefore)
+  })
+
+  it('editing is scoped to own virtual device and keeps large summary IDs exact', async () => {
+    const view = await mountView()
+    useUserStore().setUserInfo({ userId: 7 } as never)
+    const record = { id: '9007199254740993', roleId: 3, deviceId: 'user_chat_7', summary: 'old' } as SummaryMemory
+    expect(view.canEditSummary(record)).toBe(true)
+    expect(view.canEditSummary({ ...record, deviceId: 'user_chat_8' })).toBe(false)
+    view.openSummary(record); view.editText = 'new'
+    robotMemoryMock.updateRobotSummary.mockResolvedValueOnce({ code: 200, data: 1, message: 'ok' })
+    await view.submitSummary()
+    expect(robotMemoryMock.updateRobotSummary).toHaveBeenCalledWith(3, '9007199254740993', 'new')
+    expect(view.editRecord).toBeUndefined()
+  })
+
+  it('an older save cannot close a newer summary editor', async () => {
+    const view = await mountView()
+    let resolve!: (value: unknown) => void
+    robotMemoryMock.updateRobotSummary.mockReturnValueOnce(new Promise(r => { resolve = r }))
+    const record = { id: '9007199254740993', roleId: 3, deviceId: 'user_chat_7', summary: 'old' } as SummaryMemory
+    view.openSummary(record); view.editText = 'first'
+    const saving = view.submitSummary(); await flushPromises()
+    view.openSummary({ ...record, id: '9007199254740994', summary: 'second' })
+    resolve({ code: 200, data: 1, message: 'ok' }); await saving
+    expect(view.editRecord?.id).toBe('9007199254740994')
+    expect(view.editText).toBe('second')
   })
 })

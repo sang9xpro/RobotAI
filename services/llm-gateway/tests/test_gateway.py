@@ -5,20 +5,30 @@ from aiohttp import ClientSession, web
 from gateway import create_app, validate, STATE
 
 TOKEN = 'test-private-token-000000000000'
-MODEL = {'model': 'test-model', 'isDefault': True, 'supportedReasoningEfforts': [{'reasoningEffort': 'low'}]}
+MODEL = {'model': 'test-model', 'displayName': 'Test model', 'isDefault': True,
+         'inputModalities': ['text', 'image'], 'defaultReasoningEffort': 'low',
+         'supportedReasoningEfforts': [{'reasoningEffort': 'low'}, {'reasoningEffort': 'high'}]}
 
 class FakeSession:
     closed = 0
     gate = None
     entered = None
     fail = False
+    last_effort = None
     async def __aenter__(self):
         return self
     async def __aexit__(self, *args):
+        await self.close()
+    async def close(self):
         type(self).closed += 1
+    async def prepare(self, messages, model, effort):
+        self.prepared = (messages, model, effort)
+    async def interrupt(self):
+        self.interrupted = True
     async def models(self):
         return [MODEL]
     async def stream(self, messages, model, effort):
+        type(self).last_effort = effort
         if type(self).entered:
             type(self).entered.set()
         yield 'Chào '
@@ -88,7 +98,61 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.app[STATE]['busy'])
     async def test_catalog(self):
         async with self.client.get(self.url + '/v1/models') as r:
-            self.assertEqual((await r.json())['data'][0]['id'], 'test-model')
+            model = (await r.json())['data'][0]
+            self.assertEqual(model['id'], 'test-model')
+            self.assertEqual(model['display_name'], 'Test model')
+            self.assertTrue(model['is_default'])
+            self.assertEqual(model['input_modalities'], ['text', 'image'])
+            self.assertEqual(model['reasoning_efforts'], ['low', 'high'])
+            self.assertEqual(model['default_reasoning_effort'], 'low')
+        self.assertEqual(FakeSession.closed, 1)
+
+    async def test_selected_effort_and_unsupported_effort(self):
+        import uuid
+        ident = str(uuid.uuid4())
+        for path, body, status in (('/v1/chat/completions', dict(self.body, reasoning_effort='none'), 400),
+                           ('/v1/sessions', {'session_id': ident, 'owner_id': 'A', 'model': 'codex-default',
+                                             'messages': [], 'reasoning_effort': 'none'}, 409)):
+            async with self.client.post(self.url + path, json=body) as r:
+                self.assertEqual(r.status, status)
+        async with self.client.post(self.url + '/v1/sessions', json={
+                'session_id': ident, 'owner_id': 'A', 'model': 'codex-default',
+                'messages': [], 'reasoning_effort': 'high'}) as r:
+            self.assertEqual(r.status, 200)
+        entry = self.app[STATE]['sessions'].entries[ident]
+        self.assertEqual(entry.session.prepared[2], 'high')
+        async with self.client.post(self.url + '/v1/chat/completions', json=dict(self.body, reasoning_effort='high'),
+                                    headers={'X-Ken-Session-Id': ident, 'X-Ken-Owner-Id': 'A'}) as r:
+            self.assertEqual(r.status, 200)
+            await r.read()
+        self.assertEqual(FakeSession.last_effort, 'high')
+
+    async def test_resident_http_contract_and_identity_conflict(self):
+        import uuid
+        a, b = str(uuid.uuid4()), str(uuid.uuid4())
+        async def open(ident, owner):
+            return await self.client.post(self.url + '/v1/sessions', json={
+                'session_id': ident, 'owner_id': owner, 'model': 'codex-default', 'messages': []})
+        for ident, owner in ((a, 'A'), (a, 'A'), (b, 'B')):
+            async with await open(ident, owner) as r:
+                self.assertEqual(r.status, 200)
+                self.assertEqual((await r.json())['state'], 'ready')
+        async with await open(a, 'B') as r:
+            self.assertEqual(r.status, 409)
+        self.assertEqual(len(self.app[STATE]['sessions'].entries), 2)
+        async with self.client.post(self.url + '/v1/chat/completions', json=self.body,
+                                    headers={'X-Ken-Session-Id': a}) as r:
+            self.assertIn('[DONE]', await r.text())
+        self.assertEqual(FakeSession.closed, 0)
+        async with self.client.post(self.url + '/v1/sessions/' + a + '/heartbeat') as r:
+            self.assertEqual(r.status, 200)
+        async with self.client.delete(self.url + '/v1/sessions/' + a) as r:
+            self.assertEqual(r.status, 204)
+        self.assertEqual(FakeSession.closed, 1)
+        async with self.client.post(self.url + '/v1/chat/completions', json=self.body,
+                                    headers={'X-Ken-Session-Id': a}) as r:
+            self.assertEqual(r.status, 409)
+        self.assertTrue(self.app[STATE]['sessions'].entries[b].ready)
 
     async def test_inline_images_and_no_external_fetch(self):
         import base64

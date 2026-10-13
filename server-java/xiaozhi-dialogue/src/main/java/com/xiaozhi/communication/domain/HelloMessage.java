@@ -19,4 +19,5 @@ public final class HelloMessage extends Message {
     private Integer version;
     private HelloFeatures features;
     private AudioParams audioParams;
+    private com.fasterxml.jackson.databind.JsonNode robotai;
 }

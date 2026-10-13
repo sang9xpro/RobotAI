@@ -1,0 +1,252 @@
+[
+  {
+    "part": "base",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.998,
+    "min_mm": 0.302,
+    "support_area_pct": 1.3,
+    "partial": false
+  },
+  {
+    "part": "battery_tray",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.7,
+    "min_mm": 2.401,
+    "support_area_pct": 0.7,
+    "partial": false
+  },
+  {
+    "part": "bearing_spacer",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 1.299,
+    "min_mm": 1.299,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "cable_clip",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.0,
+    "min_mm": 2.0,
+    "support_area_pct": 4.8,
+    "partial": false
+  },
+  {
+    "part": "calibration_coupon",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 4.0,
+    "min_mm": 4.0,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "drive_wheel",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 5.923,
+    "min_mm": 2.0,
+    "support_area_pct": 26.6,
+    "partial": false
+  },
+  {
+    "part": "electronics_deck",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 3.0,
+    "min_mm": 1.604,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "fender",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.995,
+    "min_mm": 0.849,
+    "support_area_pct": 4.2,
+    "partial": false
+  },
+  {
+    "part": "front_sensor_bezel",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 1.6,
+    "min_mm": 1.6,
+    "support_area_pct": 15.8,
+    "partial": false
+  },
+  {
+    "part": "front_sensor_carrier",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.4,
+    "min_mm": 2.4,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "head_stem",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.298,
+    "min_mm": 0.167,
+    "support_area_pct": 15.6,
+    "partial": false
+  },
+  {
+    "part": "idler_wheel",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 11.1,
+    "min_mm": 2.0,
+    "support_area_pct": 7.9,
+    "partial": false
+  },
+  {
+    "part": "io_panel",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 3.0,
+    "min_mm": 1.22,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "io_panel_blank",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 3.0,
+    "min_mm": 2.656,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "lid",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.42,
+    "min_mm": 2.0,
+    "support_area_pct": 9.7,
+    "partial": false
+  },
+  {
+    "part": "magnetic_head",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.0,
+    "min_mm": 2.0,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "motor_cap",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.224,
+    "min_mm": 1.302,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "motor_cradle",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 1.831,
+    "min_mm": 1.302,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "neck_mount",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.5,
+    "min_mm": 0.133,
+    "support_area_pct": 0.9,
+    "partial": false
+  },
+  {
+    "part": "neck_shroud",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.188,
+    "min_mm": 0.748,
+    "support_area_pct": 15.3,
+    "partial": false
+  },
+  {
+    "part": "sensor_carrier",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.4,
+    "min_mm": 1.803,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "servo_cap",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 3.0,
+    "min_mm": 1.055,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "tensioner",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 3.0,
+    "min_mm": 1.002,
+    "support_area_pct": 0.0,
+    "partial": false
+  },
+  {
+    "part": "tower_side_panel",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 1.793,
+    "min_mm": 1.792,
+    "support_area_pct": 0.7,
+    "partial": false
+  },
+  {
+    "part": "track",
+    "exit_code": 0,
+    "watertight": true,
+    "body_count": 1,
+    "p05_mm": 2.4,
+    "min_mm": 2.396,
+    "support_area_pct": 2.9,
+    "partial": false
+  }
+]

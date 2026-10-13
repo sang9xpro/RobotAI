@@ -61,7 +61,12 @@ public final class UserMessageAssembler {
         String speakerPrefix = speaker == null ? "" : "recognized".equals(speaker.status())
                 ? "[Local speaker hint: " + speaker.name() + "; address: " + speaker.address() + "; source: " + speaker.source() + "] "
                 : "[Local speaker: unknown; use neutral address] ";
-        if (timestamp == null && !StringUtils.hasText(emotion) && speaker == null) {
+        var listening = bo == null || bo.getListeningContext() == null ? null : bo.getListeningContext().sanitized();
+        if (listening != null) speakerPrefix += "[Conversation: individual; admission: " + listening.reason()
+                + "; visible: " + listening.visible() + "; facing robot: " + listening.facingRobot()
+                + "; active speaker verified: " + listening.activeSpeakerVerified()
+                + "; uncertain: " + listening.uncertain() + "] ";
+        if (timestamp == null && !StringUtils.hasText(emotion) && speaker == null && listening == null) {
             return um;
         }
         return UserMessage.builder()

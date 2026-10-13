@@ -86,7 +86,7 @@ public class DefaultConversationFactory implements ConversationFactory {
                         chatMemory, ownerId, roleId, sessionScoped ? sessionId : null))
                 .maxMessages(maxMessages)
                 .tokenBudget(tokenBudget(role))
-                .promptOverhead(promptOverhead)
+                .promptOverhead(promptOverhead(role))
                 .keepMessages(keepMessages)
                 .build();
     }
@@ -101,6 +101,14 @@ public class DefaultConversationFactory implements ConversationFactory {
             }
         }
         return Math.max(1, (int) Math.round(contextLength * contextBudgetRatio));
+    }
+
+    private int promptOverhead(RoleBO role) {
+        ConfigBO config = role.getModelId() != null ? configLookup.getConfig(role.getModelId()) : null;
+        // This provider removes robot tool definitions. Reserving the normal 4000
+        // tool tokens would compact even a two-message chat at a 4096 context setting,
+        // replace its system summary and force a cold thread on every turn.
+        return config != null && "codex-chatgpt".equals(config.getProvider()) ? Math.min(promptOverhead, 512) : promptOverhead;
     }
 
     /** 有摘要时只加载摘要之后的消息，没有时取最近 maxMessages 条 */

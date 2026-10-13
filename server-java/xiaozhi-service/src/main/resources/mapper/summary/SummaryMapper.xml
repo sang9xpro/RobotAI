@@ -19,6 +19,10 @@
         LEFT JOIN sys_device d ON s.deviceId = d.deviceId
         LEFT JOIN sys_role r ON s.roleId = r.roleId
         <where>
+            <!-- A transferred robot must not expose the previous owner's summaries. -->
+            <if test="userId != null">
+                r.userId = #{userId} AND
+            </if>
             <choose>
                 <when test="deviceId != null and deviceId != ''">
                     s.deviceId = #{deviceId}

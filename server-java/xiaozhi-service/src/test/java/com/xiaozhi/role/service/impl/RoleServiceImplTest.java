@@ -168,12 +168,21 @@ class RoleServiceImplTest {
     }
 
     @Test
-    void copyDefaultRoleThrowsWhenSourceRoleMissing() {
+    void copyDefaultRoleInitializesGenericPersonaWhenSourceRoleMissing() {
         when(roleMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-
-        assertThatThrownBy(() -> roleService.copyDefaultRole(10, 20))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("默认角色模板不存在");
+        when(roleMapper.insert(any(RoleDO.class))).thenAnswer(invocation -> {
+            RoleDO role = invocation.getArgument(0);
+            assertThat(role.getUserId()).isEqualTo(20);
+            assertThat(role.getIsDefault()).isEqualTo("1");
+            assertThat(role.getState()).isEqualTo("1");
+            assertThat(role.getRoleName()).isEqualTo("RobotAI");
+            assertThat(role.getVoiceName()).isEqualTo("vi-VN-HoaiMyNeural");
+            assertThat(role.getModelId()).isNull();
+            role.setRoleId(22);
+            return 1;
+        });
+        assertThat(roleService.copyDefaultRole(10, 20)).isEqualTo(22);
+        verify(roleConvert, org.mockito.Mockito.never()).copy(any());
     }
 
     @Test

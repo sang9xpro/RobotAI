@@ -1,0 +1,111 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/motor_cradle.stl",
+  "mesh": {
+    "bbox_mm": [
+      24.0,
+      28.0,
+      23.0
+    ],
+    "volume_mm3": 10723.7,
+    "surface_area_mm2": 4792.3,
+    "triangle_count": 1724,
+    "watertight": true,
+    "euler_number": -6,
+    "body_count": 1
+  },
+  "scale": {
+    "bbox_diagonal_mm": 43.4626,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "overhangs": {
+    "angle_limit_used_deg": 45.0,
+    "down_facing_area_below_limit_mm2": 0.0,
+    "down_facing_area_below_limit_pct": 0.0,
+    "face_count_below_limit": 0,
+    "down_facing_angle_histogram_mm2": {},
+    "largest_faces_below_limit": []
+  },
+  "wall_thickness": {
+    "samples_valid": 1724,
+    "min_mm": 1.302,
+    "p05_mm": 1.831,
+    "p25_mm": 4.09,
+    "median_mm": 10.7,
+    "max_mm": 28.694,
+    "thinnest_samples": [
+      {
+        "location_xyz": [
+          -7.96,
+          -12.7,
+          7.67
+        ],
+        "thickness_mm": 1.302
+      },
+      {
+        "location_xyz": [
+          8.04,
+          12.7,
+          15.33
+        ],
+        "thickness_mm": 1.302
+      },
+      {
+        "location_xyz": [
+          8.04,
+          -12.7,
+          7.67
+        ],
+        "thickness_mm": 1.302
+      },
+      {
+        "location_xyz": [
+          -7.92,
+          12.7,
+          7.67
+        ],
+        "thickness_mm": 1.304
+      },
+      {
+        "location_xyz": [
+          7.92,
+          -12.7,
+          15.33
+        ],
+        "thickness_mm": 1.304
+      },
+      {
+        "location_xyz": [
+          -8.08,
+          12.7,
+          7.67
+        ],
+        "thickness_mm": 1.304
+      },
+      {
+        "location_xyz": [
+          8.17,
+          12.69,
+          7.67
+        ],
+        "thickness_mm": 1.318
+      },
+      {
+        "location_xyz": [
+          8.17,
+          12.69,
+          7.67
+        ],
+        "thickness_mm": 1.318
+      }
+    ]
+  },
+  "support_volume": {
+    "angle_limit_used_deg": 45.0,
+    "estimated_support_volume_mm3": 0.0,
+    "part_volume_mm3": 10723.7,
+    "support_to_part_ratio_pct": 0.0,
+    "method": "prism from face centroid to build plate; coarse upper-bound estimate"
+  },
+  "partial": false
+}

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { ROUTES } from '@/router/routes'
 import { message } from 'ant-design-vue'
 import { DeviceState } from '@/constants/enums'
 import { useTable } from '@/composables/useTable'
@@ -17,6 +19,7 @@ import type { Role } from '@/types/role'
 import type { TableColumnsType } from 'ant-design-vue'
 
 const { t } = useI18n()
+const router = useRouter()
 const { navigateToMemory } = useMemoryView()
 
 // 三个请求各自一个实例：要在模板上显示进度的解构出自己的 loading，其余只取执行函数
@@ -419,6 +422,7 @@ fetchData()
           <template v-if="column.dataIndex === 'deviceId'">
             <a-tooltip :title="record.deviceId" placement="topLeft">
               <span class="ellipsis-text">{{ record.deviceId }}</span>
+              <a-tag v-if="String(record.deviceId).startsWith('user_chat_')" color="cyan">{{ t('robotai.virtualDevice') }}</a-tag>
             </a-tooltip>
           </template>
 
@@ -539,6 +543,10 @@ fetchData()
               @delete="() => handleDeleteDevice(record)"
             >
               <template #actions>
+                <a-button v-permission="'system:device-history'" type="link" size="small" class="table-action-link"
+                  @click="router.push({ path: ROUTES.DEVICE_HISTORY, query: { deviceId: record.deviceId } })">
+                  {{ t('robotai.deviceHistory') }}
+                </a-button>
                 <a-button
                   v-permission="'system:device:memory'"
                   type="link"

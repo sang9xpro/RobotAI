@@ -49,4 +49,25 @@
         ORDER BY d.createTime DESC
     </select>
 
+    <select id="selectAdminRobots" resultType="com.xiaozhi.device.model.AdminRobotProjection">
+        SELECT d.deviceId,d.deviceName,d.state,d.type,d.userId,u.username,u.name AS ownerName
+        FROM sys_device d LEFT JOIN sys_user u ON u.userId=d.userId
+        WHERE d.deviceId REGEXP '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
+        <if test="search != null and search != ''">
+            AND (d.deviceId LIKE CONCAT('%',#{search},'%') OR d.deviceName LIKE CONCAT('%',#{search},'%'))
+        </if>
+        ORDER BY d.deviceId
+    </select>
+    <select id="selectHistoryDevices" resultType="com.xiaozhi.device.model.AdminRobotProjection">
+        SELECT d.deviceId,d.deviceName,d.state,d.type,d.userId,u.username,u.name AS ownerName
+        FROM sys_device d LEFT JOIN sys_user u ON u.userId=d.userId
+        WHERE 1=1
+        <if test="scopeUserId != null">AND d.userId = #{scopeUserId}</if>
+        <if test="filter.deviceId != null and filter.deviceId != ''">AND d.deviceId = #{filter.deviceId}</if>
+        <if test="filter.search != null and filter.search != ''">
+            AND (d.deviceId LIKE CONCAT('%',#{filter.search},'%') OR d.deviceName LIKE CONCAT('%',#{filter.search},'%')
+                 OR u.username LIKE CONCAT('%',#{filter.search},'%') OR u.name LIKE CONCAT('%',#{filter.search},'%'))
+        </if>
+        ORDER BY d.deviceId
+    </select>
 </mapper>

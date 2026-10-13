@@ -10,7 +10,7 @@ export type ThemeMode = 'light' | 'dark' | 'auto'
 const darkTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {
-    colorPrimary: '#1890ff',
+    colorPrimary: '#008b83',
     colorError: '#ff4d4f',
     colorSuccess: '#52c41a',
     colorWarning: '#faad14',
@@ -32,7 +32,7 @@ const darkTheme: ThemeConfig = {
 const lightTheme: ThemeConfig = {
   algorithm: theme.defaultAlgorithm,
   token: {
-    colorPrimary: '#1890ff',
+    colorPrimary: '#008b83',
     colorError: '#ff4d4f',
     colorSuccess: '#52c41a',
     colorWarning: '#faad14',
@@ -69,8 +69,8 @@ function injectCssVariables(isDark: boolean) {
   })
   
   // 额外添加一些常用的派生变量
-  root.style.setProperty('--ant-color-primary-hover', isDark ? '#40a9ff' : '#40a9ff')
-  root.style.setProperty('--ant-color-primary-bg', isDark ? '#111d2c' : '#e6f7ff')
+  root.style.setProperty('--ant-color-primary-hover', isDark ? '#14a89d' : '#14a89d')
+  root.style.setProperty('--ant-color-primary-bg', isDark ? '#102a29' : '#e6f7f5')
   root.style.setProperty('--ant-color-success-bg', isDark ? '#162312' : '#f6ffed')
   root.style.setProperty('--ant-color-error-bg', isDark ? '#2c1618' : '#fff1f0')
   root.style.setProperty('--ant-color-warning-bg', isDark ? '#2b2111' : '#fffbe6')

@@ -42,6 +42,7 @@ public class AiConfig {
 
     // ── 能力 ──────────────────────────────────────────────────────────────────
     private Boolean enableThinking;
+    private String reasoningEffort;
     private Integer contextLength;
 
     // ── 状态 ──────────────────────────────────────────────────────────────────
@@ -86,11 +87,13 @@ public class AiConfig {
     }
 
     public static AiConfig newConfig(Integer userId, ConfigBO bo) {
-        return newConfig(userId, bo.getConfigType(), bo.getProvider(),
+        AiConfig config = newConfig(userId, bo.getConfigType(), bo.getProvider(),
                 bo.getConfigName(), bo.getConfigDesc(), bo.getModelType(),
                 bo.getAppId(), bo.getApiKey(), bo.getApiSecret(),
                 bo.getAk(), bo.getSk(), bo.getApiUrl(),
                 bo.getEnableThinking(), bo.getContextLength(), "1".equals(bo.getIsDefault()));
+        config.reasoningEffort = bo.getReasoningEffort();
+        return config;
     }
 
     /** 从持久层重建聚合根（Repository 专用，不产生任何信号）。 */
@@ -127,11 +130,28 @@ public class AiConfig {
 
     // ── 行为方法 ──────────────────────────────────────────────────────────────
 
+    /** Persistence overload; older callers can still reconstruct legacy configurations. */
+    public static AiConfig reconstitute(Integer configId, Integer userId,
+                                        String configType, String provider,
+                                        String configName, String configDesc, String modelType,
+                                        String appId, String apiKey, String apiSecret,
+                                        String ak, String sk, String apiUrl,
+                                        Boolean enableThinking, Integer contextLength,
+                                        String state, boolean isDefault,
+                                        LocalDateTime createTime, LocalDateTime updateTime, String reasoningEffort) {
+        AiConfig config = reconstitute(configId, userId, configType, provider, configName, configDesc, modelType,
+                appId, apiKey, apiSecret, ak, sk, apiUrl, enableThinking, contextLength,
+                state, isDefault, createTime, updateTime);
+        config.reasoningEffort = reasoningEffort;
+        return config;
+    }
+
     public void update(ConfigBO bo) {
         update(bo.getConfigName(), bo.getConfigDesc(), bo.getModelType(), bo.getProvider(),
                 bo.getAppId(), bo.getApiKey(), bo.getApiSecret(), bo.getAk(), bo.getSk(),
                 bo.getApiUrl(), bo.getEnableThinking(), bo.getContextLength(),
                 bo.getIsDefault() == null ? null : "1".equals(bo.getIsDefault()));
+        this.reasoningEffort = merge(bo.getReasoningEffort(), this.reasoningEffort);
     }
 
     public void update(String configName, String configDesc, String modelType, String provider,
@@ -186,6 +206,7 @@ public class AiConfig {
                 .setState(merge(patch.getState(), this.state))
                 .setIsDefault(merge(patch.getIsDefault(), this.isDefault ? ConfigBO.DEFAULT_YES : ConfigBO.DEFAULT_NO))
                 .setEnableThinking(merge(patch.getEnableThinking(), this.enableThinking))
+                .setReasoningEffort(merge(patch.getReasoningEffort(), this.reasoningEffort))
                 .setContextLength(merge(patch.getContextLength(), this.contextLength))
                 .setCreateTime(this.createTime)
                 .setUpdateTime(this.updateTime);

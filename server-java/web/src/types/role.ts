@@ -4,7 +4,7 @@ import type { PageQueryParams } from './api'
 export type { PromptTemplate } from './template'
 
 export type RoleModelType = 'llm' | 'agent'
-export type VoiceProvider = 'edge' | 'aliyun' | 'aliyun-nls' | 'volcengine' | 'xfyun' | 'minimax' | 'tencent' | 'sherpa-onnx'
+export type VoiceProvider = 'edge' | 'aliyun' | 'aliyun-nls' | 'volcengine' | 'xfyun' | 'minimax' | 'tencent' | 'sherpa-onnx' | 'openai'
 
 // 语音性别
 export type VoiceGender = '' | 'male' | 'female'

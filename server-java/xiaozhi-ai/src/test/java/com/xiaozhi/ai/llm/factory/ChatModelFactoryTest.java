@@ -169,4 +169,18 @@ class ChatModelFactoryTest {
         assertThat(result).isSameAs(stubModel);
         verify(configLookup).getDefaultConfig("llm", ConfigBO.ModelType.vision.getValue());
     }
+
+    @Test
+    void aConfigurationUpdateDoesNotCloseTheModelHeldByAnActiveSession() throws Exception {
+        var active = org.mockito.Mockito.mock(ChatModel.class,
+            org.mockito.Mockito.withSettings().extraInterfaces(AutoCloseable.class));
+        var role = new RoleBO(); role.setModelId(11);
+        var config = new ConfigBO().setConfigId(11).setProvider("stub");
+        when(configLookup.getConfig(11)).thenReturn(config);
+        when(stubProvider.createChatModel(config, role)).thenReturn(active, fallbackModel);
+        assertThat(chatModelFactory.getChatModel(role)).isSameAs(active);
+        chatModelFactory.onAiConfigChanged(new com.xiaozhi.event.AiConfigChangedEvent(this,"llm",11));
+        assertThat(chatModelFactory.getChatModel(role)).isSameAs(fallbackModel);
+        verify((AutoCloseable)active, org.mockito.Mockito.never()).close();
+    }
 }

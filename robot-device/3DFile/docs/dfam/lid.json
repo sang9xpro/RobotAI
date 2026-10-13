@@ -1,0 +1,193 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/lid.stl",
+  "mesh": {
+    "bbox_mm": [
+      144.0,
+      174.0,
+      30.0
+    ],
+    "volume_mm3": 132593.5,
+    "surface_area_mm2": 72208.0,
+    "triangle_count": 11946,
+    "watertight": true,
+    "euler_number": -34,
+    "body_count": 1
+  },
+  "scale": {
+    "bbox_diagonal_mm": 227.8421,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "overhangs": {
+    "angle_limit_used_deg": 45.0,
+    "down_facing_area_below_limit_mm2": 7027.98,
+    "down_facing_area_below_limit_pct": 9.7,
+    "face_count_below_limit": 988,
+    "down_facing_angle_histogram_mm2": {
+      "0-10deg": 712.84,
+      "20-30deg": 1795.08,
+      "30-40deg": 3460.92,
+      "40-50deg": 3008.22,
+      "50-60deg": 3426.9,
+      "60-70deg": 2487.39,
+      "70-80deg": 1784.67,
+      "80-90deg": 3178.67
+    },
+    "largest_faces_below_limit": [
+      {
+        "location_xyz": [
+          3.14,
+          51.57,
+          2.17
+        ],
+        "surface_angle_deg": 31.2,
+        "area_mm2": 438.58
+      },
+      {
+        "location_xyz": [
+          -16.78,
+          66.68,
+          10.71
+        ],
+        "surface_angle_deg": 27.9,
+        "area_mm2": 138.23
+      },
+      {
+        "location_xyz": [
+          16.78,
+          66.68,
+          10.71
+        ],
+        "surface_angle_deg": 27.9,
+        "area_mm2": 138.23
+      },
+      {
+        "location_xyz": [
+          -3.14,
+          66.68,
+          10.71
+        ],
+        "surface_angle_deg": 27.9,
+        "area_mm2": 138.23
+      },
+      {
+        "location_xyz": [
+          3.41,
+          62.7,
+          8.6
+        ],
+        "surface_angle_deg": 27.9,
+        "area_mm2": 127.47
+      },
+      {
+        "location_xyz": [
+          -22.8,
+          62.7,
+          8.6
+        ],
+        "surface_angle_deg": 27.9,
+        "area_mm2": 127.47
+      },
+      {
+        "location_xyz": [
+          22.8,
+          62.7,
+          8.6
+        ],
+        "surface_angle_deg": 27.9,
+        "area_mm2": 127.47
+      },
+      {
+        "location_xyz": [
+          -11.67,
+          55.14,
+          4.33
+        ],
+        "surface_angle_deg": 31.2,
+        "area_mm2": 118.18
+      }
+    ]
+  },
+  "wall_thickness": {
+    "samples_valid": 2500,
+    "min_mm": 2.0,
+    "p05_mm": 2.42,
+    "p25_mm": 3.041,
+    "median_mm": 4.328,
+    "max_mm": 106.445,
+    "thinnest_samples": [
+      {
+        "location_xyz": [
+          38.83,
+          32.17,
+          2.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          33.17,
+          37.83,
+          2.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          39.59,
+          34.47,
+          0.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          39.59,
+          34.47,
+          0.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          -38.32,
+          34.84,
+          0.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          33.17,
+          37.83,
+          2.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          -33.17,
+          32.17,
+          2.0
+        ],
+        "thickness_mm": 2.0
+      },
+      {
+        "location_xyz": [
+          -33.17,
+          32.17,
+          2.0
+        ],
+        "thickness_mm": 2.0
+      }
+    ]
+  },
+  "support_volume": {
+    "angle_limit_used_deg": 45.0,
+    "estimated_support_volume_mm3": 68451.7,
+    "part_volume_mm3": 132593.5,
+    "support_to_part_ratio_pct": 51.6,
+    "method": "prism from face centroid to build plate; coarse upper-bound estimate"
+  },
+  "partial": false
+}

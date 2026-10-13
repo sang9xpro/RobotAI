@@ -8,7 +8,7 @@ import type { PageQueryParams } from './api'
  * 对话摘要
  */
 export interface SummaryMemory {
-  id: number
+  id: string | number
   deviceId: string
   deviceName?: string | null
   roleId: number

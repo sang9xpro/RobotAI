@@ -7,7 +7,7 @@ CameraX ImageAnalysis nằm trên các tab. Camera mở khi robot thức và app
 1. Đăng nhập, đánh thức robot, cấp quyền camera khi app yêu cầu.
 2. Mở **Người quen**, nhập tên và cách xưng hô, nhấn **Thêm người**.
 3. Nhấn **Đăng ký mặt**. Chỉ một người trong khung hình, đủ sáng, mặt đủ lớn; nhìn thẳng và nghiêng nhẹ. App thu 8 mẫu đạt kiểm tra góc đầu/độ sáng/kích thước, đối chiếu tính nhất quán giữa các mẫu.
-4. Nhấn **Thêm mẫu giọng**, cấp quyền microphone. Trong mỗi lượt 8 giây, đọc một câu liền mạch có ít nhất 3 giây lời nói. Đăng ký ít nhất 3 lượt, chỉ một người nói. Có nút hủy, xóa mẫu giọng, sửa và xóa người.
+4. Nhấn **Thêm mẫu giọng**, cấp quyền microphone. App hiển thị tiến độ thu đủ 8 giây âm thanh, rồi chuyển sang **Đang kiểm tra mẫu giọng**. Đọc một câu dài hoặc vài câu ngắn có ngắt nghỉ, tổng ít nhất 3 giây lời nói. Đăng ký ít nhất 3 lượt, chỉ một người nói. Có nút hủy, xóa mẫu giọng, sửa và xóa người. Bắt đầu thu lại sẽ xóa thông báo lỗi cũ; mẫu không đạt không ghi đè các mẫu đã lưu.
 5. Nói với robot như trước. Danh tính được chốt khi kết thúc thu, gửi kèm `listen.stop` cho từng lượt; backend đưa tên/cách xưng hô vào metadata trước khi gọi LLM.
 
 Khuôn mặt được nhận diện bằng SFace; giọng bằng CAM++ và Silero VAD. Mẫu mặt/giọng mã hóa AES-GCM bằng Android Keystore trong noBackupFilesDir; ảnh camera và PCM phục vụ nhận diện không lưu vào kho hồ sơ. Không gửi vector sinh trắc hoặc ảnh theo mỗi lượt lên LLM. Tính năng hỏi về cảnh vẫn cần chụp và bật cho phép gửi riêng.
@@ -16,6 +16,7 @@ Khuôn mặt được nhận diện bằng SFace; giọng bằng CAM++ và Siler
 
 - Khuôn mặt cần đạt ngưỡng, cách biệt với người gần thứ hai và ổn định qua 3 khung hình.
 - Người nói cần có ít nhất 3 mẫu giọng. Tất cả cửa sổ giọng đủ dài trong lượt phải nhận ra cùng người; cửa sổ không chắc chắn hoặc khác người khiến toàn lượt chưa xác định.
+- Khi đăng ký, các đoạn lời nói do VAD chọn được ghép thành cửa sổ 2–5 giây; khoảng im lặng không tính vào yêu cầu 3 giây lời nói. Một đoạn ngắn ở cuối hoặc các khoảng nghỉ không làm hỏng cả mẫu đủ dài. Trong hội thoại có thể có nhiều người nói, nên nếu một đoạn lời nói quá ngắn để đối chiếu thì danh tính toàn lượt vẫn là chưa xác định.
 - Nếu người nhận ra qua giọng cũng xuất hiện trong camera ở lượt đó, nguồn là `face_voice`; nếu không, là `voice`. Khuôn mặt xuất hiện riêng chỉ xác định người đang hiện diện, không tự gán tiếng ngoài khung hình cho người đó.
 - Người lạ, câu ngắn hoặc không đủ bằng chứng được gọi trung tính. Điểm cosine không phải xác suất. Ngưỡng mặc định mặt 0.50, giọng 0.65 và khoảng cách với người thứ hai chưa được hiệu chỉnh trên nhiều người thật.
 - Backend nhận đây là tín hiệu do client báo, không dùng để xác thực hoặc cấp quyền. `turn_id` phải khớp lượt bắt đầu, dữ liệu được làm sạch và không thừa hưởng danh tính của lượt trước.
@@ -45,3 +46,10 @@ python3 tools/acceptance/run_identity_phone.py --serial WCFE6XCI9PYLDAGM
 Bài thử dùng hồ sơ tạm riêng, không đăng ký ghi đè người quen hiện có. Kiểm tra native face/voice, mã hóa/phạm vi tài khoản, camera không cần preview và ngủ/thức, cùng microphone hoạt động khi camera phân tích. Audio fixture chỉ chứng minh model chạy trên máy; bài PCM microphone chỉ chứng minh thu thật đồng thời, chưa chứng minh độ chính xác nhận diện người thật.
 
 Bộ test được bổ sung luồng đăng ký/sửa/xóa tên tiếng Việt trên UI, đăng ký giọng bằng fixture và đăng ký 8 mẫu mặt thật rồi nhận lại tên sau khi tải lại hồ sơ. Khi chạy cần một người nhìn camera trước, đủ sáng và đủ gần. Kết quả 06/10/2026: **7/7 bài trên OPPO, 22/22 unit test đạt**; xem [báo cáo và giới hạn kiểm thử](IDENTITY_TEST_2026_10_06_VI.md).
+
+Kiểm tra sửa lỗi thu mẫu ngày 09/10/2026: **85/85 kiểm tra JVM và 4/4 bài trên OPPO đạt**.
+Mẫu fixture gồm bốn đoạn lời nói ngắn, ngăn cách bằng khoảng im lặng, đã đi qua
+Silero VAD/CAM++ và được lưu thành mẫu giọng. Lần thu quá ngắn tiếp theo không
+ghi đè mẫu đó. Kiểm tra UI xác nhận lỗi cũ được xóa, tiến độ PCM tăng khi thu,
+micro hội thoại không chạy trong Người quen và việc hủy thu/chuyển tab nhả micro.
+Các bài fixture không chứng minh độ chính xác nhận diện trên nhiều người thật.

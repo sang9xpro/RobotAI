@@ -81,6 +81,7 @@ public class Conversation extends ConversationIdentifier {
     private Instant nextRetryAt = Instant.EPOCH;
     // 会话已被删除：不再开始压缩
     private volatile boolean discarded;
+    private volatile boolean finishing;
 
     /**
      * 纯内存对话，不加载历史、不压缩。走 builder 而不是构造器链，省掉一长串占位的 null 与 0。
@@ -337,6 +338,42 @@ public class Conversation extends ConversationIdentifier {
         compact(true, true);
     }
 
+    /** Finish compaction/persistence before releasing a connection, with a bounded wait.
+     * Includes an unanswered last user message when the socket disappeared mid-turn.
+     * A failed summary leaves the already persisted message history available for recovery. */
+    public boolean finish(Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        List<Message> batch;
+        synchronized (this) {
+            finishing = true;
+            flushPending = false;
+            while (compacting) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) return false;
+                try {
+                    java.util.concurrent.TimeUnit.NANOSECONDS.timedWait(this, remaining);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+            if (discarded || messages.isEmpty() || summarizer == null) return true;
+            batch = List.copyOf(messages);
+        }
+        var task = new java.util.concurrent.FutureTask<>(() -> summarize(batch) > 0);
+        COMPACT_THREADS.newThread(task).start();
+        try {
+            return task.get(Math.max(1, deadline - System.nanoTime()), java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            task.cancel(true);
+            return false;
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            task.cancel(true);
+            return false;
+        }
+    }
+
     /**
      * 会话已被用户删除：不再开始新的压缩，免得把刚删掉的内容写进摘要。
      */
@@ -349,13 +386,14 @@ public class Conversation extends ConversationIdentifier {
      * @param all   压缩全部完整对话组，否则保留最近 keepMessages 条
      */
     private void compact(boolean force, boolean all) {
-        if (summarizer == null || discarded) {
+        if (summarizer == null || discarded || finishing) {
             return;
         }
         List<Message> batch;
         int size;
         int tokens;
         synchronized (this) {
+            if (finishing) return;
             if (compacting) {
                 if (all) {
                     flushPending = true;
@@ -409,6 +447,7 @@ public class Conversation extends ConversationIdentifier {
                 compacting = false;
                 flushAll = flushPending;
                 flushPending = false;
+                notifyAll();
             }
         }
         if (flushAll) {

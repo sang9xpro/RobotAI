@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ken · Thiết kế cấu hình giọng nói</title>
+  <style>
+    :root{color-scheme:dark;--bg:#071019;--panel:#111e29;--line:#253745;--text:#eef7fa;--muted:#a7bbc8;--cyan:#6de3db;--accent:#133d41}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.6}
+    button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}
+    .preview{background:#172736;color:#c5d7e0;padding:10px 24px;font-size:12px;text-align:center;border-bottom:1px solid var(--line)}
+    .shell{max-width:1140px;margin:auto;padding:34px 32px 50px;display:grid;grid-template-columns:220px minmax(0,1fr);gap:48px}
+    aside{border-right:1px solid var(--line);padding-right:26px}.brand{font-size:21px;letter-spacing:-.7px;font-weight:700;display:flex;gap:10px;align-items:center}.logo{color:var(--cyan);font-size:24px}
+    .ken{padding:30px 20px 24px;border:1px solid var(--line);border-radius:20px;margin:30px 0;background:radial-gradient(ellipse at 50% 30%,#143b40,transparent 75%)}
+    .eyes{display:flex;justify-content:center;gap:22px;height:44px;align-items:center}.eye{width:34px;height:28px;border-radius:11px;background:var(--cyan);box-shadow:0 0 21px #6de3db50}.ken strong,.ken small{display:block;text-align:center}.ken strong{margin-top:16px}.ken small{color:var(--muted);font-size:12px}
+    .nav{display:grid;gap:5px}.nav span{color:var(--muted);padding:9px 14px;border-radius:9px}.nav .active{background:var(--accent);color:var(--cyan);font-weight:600}.side-note{color:var(--muted);font-size:12px;margin-top:34px}
+    header{display:flex;justify-content:space-between;gap:15px;align-items:center}.eyebrow{font-size:11px;color:var(--cyan);letter-spacing:1.6px;font-weight:650;text-transform:uppercase}h1{font-size:32px;letter-spacing:-1px;margin:5px 0 2px;line-height:1.3}.subtitle{color:var(--muted);margin:0;font-size:14px}.badge{font-size:11px;color:var(--cyan);border:1px solid #285655;border-radius:30px;padding:5px 10px;white-space:nowrap}
+    .tabs{display:flex;border-bottom:1px solid var(--line);gap:26px;margin:27px 0 22px}.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:10px 0;color:var(--muted);font-size:14px}.tabs button[aria-selected=true]{border-color:var(--cyan);color:var(--cyan)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:23px 25px;margin-bottom:16px}.card h2{font-size:17px;margin:0 0 6px;letter-spacing:-.2px}.desc{color:var(--muted);font-size:13px;margin:0 0 20px}label{display:block;font-size:13px;font-weight:550;margin-bottom:7px}
+    select,input[type=text],textarea{width:100%;border:1px solid #344958;color:var(--text);border-radius:9px;background:#0b1620;padding:11px 13px}textarea{resize:vertical;min-height:96px;font-size:14px;line-height:1.65}.row{display:flex;align-items:center;justify-content:space-between;gap:16px}.row.wrap{flex-wrap:wrap}.hint{font-size:12px;color:var(--muted);margin:7px 0 0}.link{background:none;border:0;color:var(--cyan);padding:0;font-size:13px}.field{margin-top:21px}
+    .segmented{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mode{padding:13px;text-align:left;background:#0b1620;border:1px solid var(--line);border-radius:10px;color:var(--text)}.mode[aria-pressed=true]{border-color:var(--cyan);background:#153538}.mode strong{display:block;font-weight:550;font-size:14px}.mode small{color:var(--muted);font-size:11px}.mode b{font-size:9px;color:#e5c88f;font-weight:500;margin-left:3px}.mode-note{font-size:12px;color:var(--muted);margin-top:10px;max-width:590px}.volume{display:flex;gap:15px;align-items:center;margin-top:24px}.volume label{margin:0;white-space:nowrap}.volume input{accent-color:var(--cyan);flex:1}.volume output{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;width:36px}
+    .chips{display:flex;gap:7px;flex-wrap:wrap;margin:17px 0 12px}.chip{border:1px solid var(--line);border-radius:7px;color:var(--muted);background:#0b1620;padding:5px 10px;font-size:12px}.chip[aria-pressed=true]{color:var(--cyan);border-color:#427c7a;background:#163337}
+    .primary,.secondary{border-radius:9px;padding:10px 16px;font-size:13px;font-weight:600;min-height:43px}.primary{background:var(--cyan);color:#062528;border:1px solid var(--cyan)}.secondary{background:transparent;color:var(--text);border:1px solid #385160}.preview-row{margin-top:15px;display:flex;align-items:center;gap:15px}.wave{display:flex;gap:3px;align-items:center;height:26px;color:var(--cyan)}.wave i{display:block;width:3px;border-radius:2px;background:currentColor;height:6px}.wave i:nth-child(3n){height:17px}.wave i:nth-child(2n){height:11px}.wave.playing i{animation:pulse .65s infinite alternate}.wave.playing i:nth-child(2n){animation-delay:.2s}@keyframes pulse{to{height:23px;opacity:.4}}@media(prefers-reduced-motion:reduce){.wave.playing i{animation:none}}
+    .bottom{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:21px}.bottom p{color:var(--muted);font-size:12px;max-width:360px;margin:0}.status{margin-top:15px;font-size:12px;color:var(--cyan);min-height:19px}.step{display:flex;gap:13px;align-items:flex-start;margin:17px 0}.number{flex:none;display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#153538;color:var(--cyan);font-size:12px}.step p{font-size:13px;color:var(--muted);margin:2px 0}.step strong{font-size:14px;font-weight:550}.record{border:1px dashed #406473;border-radius:12px;padding:24px;text-align:center;margin:20px 0}.record p{color:var(--muted);font-size:12px}.check{display:flex;align-items:flex-start;gap:10px;font-weight:400;font-size:13px}.check input{margin-top:6px;accent-color:var(--cyan)}.voice-item{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:16px 0;border-bottom:1px solid var(--line)}.voice-item:last-child{border:0}.voice-item p{margin:3px 0;color:var(--muted);font-size:12px}.voice-item strong{font-size:14px}.mini-actions{display:flex;gap:14px}.empty{border:1px dashed #344958;border-radius:10px;padding:16px;margin-top:15px;font-size:13px;color:var(--muted)}[hidden]{display:none!important}
+    @media(max-width:800px){.shell{display:block;max-width:650px;padding:25px 20px}aside{display:none}h1{font-size:28px}.card{padding:20px}.bottom{align-items:flex-start;flex-direction:column}.bottom .primary{width:100%}.preview{padding:9px 16px}.badge{font-size:10px}.tabs{gap:23px}.segmented{gap:8px}.mode{padding:11px}.mini-actions{gap:10px}}
+  </style>
+</head>
+<body>
+  <div class="preview">BẢN THIẾT KẾ TƯƠNG TÁC · Dữ liệu minh họa · Các thao tác thu và nghe đang được mô phỏng</div>
+  <div class="shell">
+    <aside>
+      <div class="brand"><span class="logo" aria-hidden="true">◉</span> RobotAI</div>
+      <div class="ken"><div class="eyes" aria-hidden="true"><div class="eye"></div><div class="eye"></div></div><strong>Ken</strong><small>Robot đồng hành của bạn</small></div>
+      <nav class="nav" aria-label="Vị trí màn hình trong app"><span>Ken</span><span>Hội thoại</span><span>Người quen</span><span class="active" aria-current="page">Giọng nói</span><span>Tiện ích</span><span>Ký ức</span><span>Đế robot</span></nav>
+      <p class="side-note">Giọng cá nhân thuộc tài khoản của bạn. Cấu hình này áp dụng cho role Ken.</p>
+    </aside>
+    <main>
+      <header><div><div class="eyebrow">Cá nhân hóa Ken</div><h1>Giọng nói</h1><p class="subtitle">Một giọng quen thuộc, cho mỗi cuộc trò chuyện.</p></div><span class="badge">● Local trên backend</span></header>
+      <div class="tabs" role="tablist" aria-label="Quản lý giọng nói">
+        <button role="tab" id="tab-settings" aria-selected="true" aria-controls="settings" tabindex="0">Cấu hình</button>
+        <button role="tab" id="tab-create" aria-selected="false" aria-controls="create" tabindex="-1">Tạo giọng</button>
+        <button role="tab" id="tab-library" aria-selected="false" aria-controls="library" tabindex="-1">Thư viện</button>
+      </div>
+      <section id="settings" role="tabpanel" aria-labelledby="tab-settings">
+        <div class="card">
+          <div class="row"><h2>Giọng dùng cho Ken</h2><button class="link" id="new-voice">+ Tạo giọng mới</button></div>
+          <p class="desc">Mẫu và hồ sơ giọng được xử lý trên máy chủ của bạn.</p>
+          <label for="voice">Chọn giọng</label>
+          <select id="voice"><option value="personal">Giọng của tôi · Giọng cá nhân (minh họa)</option><option value="hai-dang">Hải Đăng · Giọng có sẵn trên máy</option><option value="truc-ly">Trúc Ly · Giọng có sẵn trên máy</option></select>
+          <p class="hint" id="profile-hint">Hồ sơ mẫu đã sẵn sàng · VieNeu-TTS v3 Turbo</p>
+          <div class="field"><label>Cách nói</label><div class="segmented" role="group" aria-label="Cách nói">
+            <button class="mode" id="natural" aria-pressed="true"><strong>Tự nhiên</strong><small>Theo giọng mẫu đã thu</small></button>
+            <button class="mode" id="contextual" aria-pressed="false"><strong>Theo ngữ cảnh <b>THỬ NGHIỆM</b></strong><small>Chọn mẫu theo tình huống</small></button>
+          </div><p class="mode-note" id="mode-note">Ken giữ âm sắc và cách đọc từ giọng mẫu. Ngắt nghỉ theo nội dung câu.</p></div>
+          <div class="volume"><label for="volume">Âm lượng loa</label><input type="range" id="volume" min="0" max="100" value="70"><output id="volume-value" for="volume">70%</output></div>
+        </div>
+        <div class="card">
+          <div class="row"><h2>Nghe thử</h2><span class="badge" id="delivery">Tự nhiên</span></div>
+          <p class="desc">Thử cấu hình nháp trước khi dùng trong hội thoại.</p>
+          <div class="chips" role="group" aria-label="Câu mẫu">
+            <button class="chip" aria-pressed="true" data-sample="greeting">Chào hỏi</button><button class="chip" aria-pressed="false" data-sample="caring">An ủi</button><button class="chip" aria-pressed="false" data-sample="warning">Cảnh báo</button><button class="chip" aria-pressed="false" data-sample="numbers">Đọc số</button>
+          </div>
+          <label for="test-text">Câu để Ken đọc</label><textarea id="test-text">Chào bạn, mình là Ken. Hôm nay bạn thế nào?</textarea>
+          <div class="preview-row"><button class="secondary" id="play">▷ Nghe thử · mô phỏng</button><button class="link" id="stop" hidden>Dừng</button><div class="wave" id="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+          <p class="hint">Bản triển khai sẽ phát âm thanh từ worker local trên loa điện thoại.</p>
+        </div>
+        <div class="bottom"><p>Áp dụng từ lượt nói kế tiếp cho các thiết bị dùng role Ken.</p><button class="primary" id="save">Lưu cho Ken</button></div>
+      </section>
+      <section id="create" role="tabpanel" aria-labelledby="tab-create" hidden>
+        <div class="card"><h2>Tạo giọng của bạn</h2><p class="desc">Bắt đầu bằng một đoạn nói tự nhiên. Bạn có thể nghe lại trước khi tạo.</p>
+          <label for="voice-name">Tên giọng</label><input type="text" id="voice-name" value="Giọng của tôi" maxlength="60">
+          <div class="step"><span class="number">1</span><div><strong>Chọn nơi yên tĩnh</strong><p>Tắt nhạc nền, nói gần micro và chỉ có một người nói.</p></div></div>
+          <div class="step"><span class="number">2</span><div><strong>Nói tự nhiên trong 20–30 giây</strong><p>Hãy kể về một ngày của bạn. Hệ thống sẽ chọn đoạn 3–8 giây tốt nhất làm mẫu.</p></div></div>
+          <div class="step"><span class="number">3</span><div><strong>Nghe lại và tạo giọng</strong><p>Kiểm tra mẫu, tạo hồ sơ và nghe Ken đọc một câu mới.</p></div></div>
+          <div class="record"><div class="wave" id="record-wave" aria-hidden="true" style="justify-content:center;margin-bottom:14px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><button class="secondary" id="record">● Mô phỏng thu mẫu</button><p id="record-status">Bản triển khai có thu trực tiếp và nhập file WAV.</p></div>
+          <label class="check"><input type="checkbox" id="consent"><span>Tôi đang dùng mẫu giọng của chính mình để tạo giọng cho robot.</span></label>
+          <label class="check"><input type="checkbox" id="retain"><span>Giữ bản thu gốc trên backend local để có thể nghe lại.</span></label>
+          <p class="hint">Nếu bỏ chọn, bản gốc được xóa sau khi tạo; hồ sơ giọng vẫn được giữ để Ken sử dụng.</p>
+          <div class="bottom"><p>Hội thoại và nhạc tạm dừng khi thu. Mẫu được gửi tới backend local khi bạn chọn Tạo giọng.</p><button class="primary" id="generate" disabled>Tạo giọng · mô phỏng</button></div>
+        </div>
+      </section>
+      <section id="library" role="tabpanel" aria-labelledby="tab-library" hidden>
+        <div class="card"><h2>Giọng cá nhân</h2><p class="desc">Các hồ sơ minh họa thuộc tài khoản của bạn.</p>
+          <div class="voice-item"><div><strong id="personal-name">Giọng của tôi</strong><p id="personal-state">Sẵn sàng · Đang dùng cho Ken · dữ liệu minh họa</p></div><div class="mini-actions"><button class="link" id="choose-personal">Chọn</button><button class="link" id="edit-personal">Đổi tên</button></div></div>
+          <p class="hint">Trong bản triển khai, xóa giọng sẽ hiển thị các role bị ảnh hưởng và chuyển về preset local.</p>
+        </div>
+        <div class="card"><h2>Giọng có sẵn trên máy</h2><p class="desc">Giọng dự phòng khi chưa tạo giọng cá nhân.</p>
+          <div class="voice-item"><div><strong>Hải Đăng</strong><p>VieNeu v3 Turbo · preset local</p></div><button class="link" data-choose="hai-dang">Chọn</button></div>
+          <div class="voice-item"><div><strong>Trúc Ly</strong><p>VieNeu v3 Turbo · preset local</p></div><button class="link" data-choose="truc-ly">Chọn</button></div>
+        </div>
+        <button class="secondary" id="library-new">+ Tạo giọng mới</button>
+      </section>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+      <p class="hint" style="margin-top:22px">Thiết kế cho pipeline giọng clone local. Khả năng biểu đạt cần được nghiệm thu trên mẫu giọng thật.</p>
+    </main>
+  </div>
+  <script>
+    const byId = id => document.getElementById(id);
+    const tabs = [...document.querySelectorAll('[role=tab]')];
+    let mode = 'natural', sample = 'greeting', recorded = false, recording = false, playing = false, creating = false, timer;
+    const samples = {greeting:'Chào bạn, mình là Ken. Hôm nay bạn thế nào?',caring:'Không sao đâu, mình cùng thử lại nhé. Mình ở đây với bạn.',warning:'Có vật cản phía trước. Mình sẽ dừng lại để bạn kiểm tra.',numbers:'Pin còn tám mươi lăm phần trăm. Mình sẽ nhắc bạn lúc tám giờ ba mươi phút sáng.'};
+    function status(text){byId('status').textContent=text}
+    function stopPlayback(){clearTimeout(timer);playing=false;byId('wave').classList.remove('playing');byId('play').disabled=false;byId('stop').hidden=true}
+    function show(name){stopPlayback();if(recording){recording=false;byId('record-wave').classList.remove('playing');byId('record').textContent='● Mô phỏng thu mẫu';byId('record-status').textContent='Đã hủy lượt thu minh họa.'}tabs.forEach(t=>{const active=t.getAttribute('aria-controls')===name;t.setAttribute('aria-selected',String(active));t.tabIndex=active?0:-1;byId(t.getAttribute('aria-controls')).hidden=!active});status('')}
+    tabs.forEach((tab,index)=>{tab.addEventListener('click',()=>show(tab.getAttribute('aria-controls')));tab.addEventListener('keydown',event=>{let next;if(event.key==='ArrowRight')next=(index+1)%tabs.length;if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;if(event.key==='Home')next=0;if(event.key==='End')next=tabs.length-1;if(next!==undefined){event.preventDefault();show(tabs[next].getAttribute('aria-controls'));tabs[next].focus()}})});
+    function delivery(){const personal=byId('voice').value==='personal';byId('delivery').textContent=mode==='natural'?'Tự nhiên':!personal?'Tự nhiên · preset':({greeting:'Vui · mẫu minh họa',caring:'Nhẹ nhàng · mẫu minh họa',warning:'Trung tính · thiếu mẫu nghiêm túc',numbers:'Trung tính'}[sample]||'Tự nhiên · câu tự nhập');byId('profile-hint').textContent=personal?'Hồ sơ mẫu đã sẵn sàng · VieNeu-TTS v3 Turbo':'Giọng preset đã cài trên máy · VieNeu-TTS v3 Turbo'}
+    ['natural','contextual'].forEach(id=>byId(id).addEventListener('click',()=>{mode=id;stopPlayback();['natural','contextual'].forEach(x=>byId(x).setAttribute('aria-pressed',String(x===id)));byId('mode-note').textContent=id==='natural'?'Ken giữ âm sắc và cách đọc từ giọng mẫu. Ngắt nghỉ theo nội dung câu.':'Chọn biến thể mẫu của cùng người theo tình huống. Thiếu mẫu dùng trung tính; tính năng chỉ bật sau khi thử nghe đạt yêu cầu.';delivery();status('Cấu hình nháp đã thay đổi.')}));
+    byId('voice').addEventListener('change',()=>{stopPlayback();delivery();status('Đã chọn giọng trong bản nháp.')});
+    byId('volume').addEventListener('input',()=>{byId('volume-value').value=byId('volume').value+'%'});
+    document.querySelectorAll('[data-sample]').forEach(chip=>chip.addEventListener('click',()=>{stopPlayback();sample=chip.dataset.sample;document.querySelectorAll('[data-sample]').forEach(x=>x.setAttribute('aria-pressed',String(x===chip)));byId('test-text').value=samples[sample];delivery();status('')}));
+    byId('test-text').addEventListener('input',()=>{stopPlayback();sample='custom';document.querySelectorAll('[data-sample]').forEach(x=>x.setAttribute('aria-pressed','false'));byId('delivery').textContent='Tự nhiên · câu tự nhập'});
+    byId('play').addEventListener('click',()=>{if(!byId('test-text').value.trim()){status('Nhập một câu để nghe thử.');return}playing=true;byId('wave').classList.add('playing');byId('play').disabled=true;byId('stop').hidden=false;status('Mô phỏng trạng thái phát. Bản thiết kế chưa có âm thanh tổng hợp.');timer=setTimeout(()=>{stopPlayback();status('Đã kết thúc lượt nghe thử minh họa.')},4000)});
+    byId('stop').addEventListener('click',()=>{stopPlayback();status('Đã dừng nghe thử minh họa.')});
+    byId('save').addEventListener('click',()=>{stopPlayback();status('Đã lưu lựa chọn trong phiên thiết kế này. Robot thật chưa được cập nhật.')});
+    ['new-voice','library-new'].forEach(id=>byId(id).addEventListener('click',()=>show('create')));
+    function updateCreate(){byId('generate').disabled=!recorded||recording||!byId('consent').checked||!byId('voice-name').value.trim()||creating}
+    byId('record').addEventListener('click',()=>{recording=!recording;byId('record-wave').classList.toggle('playing',recording);byId('record').textContent=recording?'■ Kết thúc mẫu minh họa':'● Mô phỏng thu lại';byId('record-status').textContent=recording?'Đang mô phỏng trạng thái thu. Nhấn kết thúc để xem bước tiếp theo.':'Mẫu minh họa: đoạn 7 giây, không clipping. Có thể tạo hồ sơ.';if(!recording)recorded=true;updateCreate()});
+    byId('consent').addEventListener('change',updateCreate);byId('voice-name').addEventListener('input',updateCreate);
+    byId('generate').addEventListener('click',()=>{const name=byId('voice-name').value.trim();if(!recorded||!byId('consent').checked||!name||creating)return;creating=true;updateCreate();byId('generate').textContent='Đang tạo · mô phỏng';status('Kiểm mẫu → trích hồ sơ → kiểm tra tổng hợp (mô phỏng).');setTimeout(()=>{creating=false;updateCreate();byId('generate').textContent='Tạo giọng · mô phỏng';byId('personal-name').textContent=name;byId('voice').options[0].textContent=name+' · Giọng cá nhân (minh họa)';byId('voice').value='personal';show('settings');delivery();status('Hồ sơ minh họa đã sẵn sàng. Bạn có thể nghe thử và chọn Lưu cho Ken.')},1500)});
+    byId('choose-personal').addEventListener('click',()=>{byId('voice').value='personal';show('settings');delivery()});
+    byId('edit-personal').addEventListener('click',()=>{show('create');byId('voice-name').focus();status('Chỉnh sửa tên trong form minh họa.')});
+    document.querySelectorAll('[data-choose]').forEach(button=>button.addEventListener('click',()=>{byId('voice').value=button.dataset.choose;show('settings');delivery()}));
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback()});
+  </script>
+</body>
+</html>

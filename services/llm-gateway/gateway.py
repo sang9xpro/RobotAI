@@ -9,6 +9,7 @@ import uuid
 import base64
 import binascii
 from aiohttp import web
+from conversation_sessions import ConversationSessions
 from codex_adapter import CodexSession, CodexError, DEFAULT_CLI
 
 
@@ -66,7 +67,9 @@ def validate(body):
     return messages
 
 
-def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
+def create_app(token, session_factory=CodexSession, timeout=90, max_active=4, max_sessions=16, lease=120):
+    if min(timeout, max_active, max_sessions, lease) <= 0:
+        raise ValueError('Timeout, concurrency, resident session and lease limits must be positive.')
     if not token or len(token) < 24:
         raise ValueError('Set KEN_LLM_TOKEN to a private gateway token of at least 24 characters.')
 
@@ -78,7 +81,8 @@ def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
 
     app = web.Application(middlewares=[auth], client_max_size=3 * 1024 * 1024,
                           handler_args={'handler_cancellation': True})
-    state = {'busy': False, 'active': 0, 'catalog': []}
+    registry = ConversationSessions(session_factory, max_sessions, lease)
+    state = {'busy': False, 'active': 0, 'catalog': [], 'sessions': registry}
     app[STATE] = state
 
     async def catalog():
@@ -87,15 +91,87 @@ def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
                 return await session.models()
 
     async def health(request):
-        return web.json_response({'status': 'ok', 'provider': 'codex-chatgpt', 'busy': state['busy']})
+        return web.json_response({'status': 'ok', 'provider': 'codex-chatgpt', 'busy': state['busy'], 'sessions': len(registry.entries)})
 
     async def models(request):
         try:
             state['catalog'] = await catalog()
             return web.json_response({'object': 'list', 'data': [
-                {'id': m['model'], 'object': 'model', 'owned_by': 'codex-chatgpt'} for m in state['catalog']]})
+                {'id': m['model'], 'object': 'model', 'owned_by': 'codex-chatgpt',
+                 'display_name': m.get('displayName') or m['model'],
+                 'is_default': bool(m.get('isDefault')),
+                 'input_modalities': m.get('inputModalities') or ['text'],
+                 'reasoning_efforts': [e['reasoningEffort'] for e in m['supportedReasoningEfforts']],
+                 'default_reasoning_effort': m.get('defaultReasoningEffort')} for m in state['catalog']]})
         except (CodexError, TimeoutError, OSError):
             return web.json_response({'error': {'message': 'Codex authentication/catalog unavailable.'}}, status=503)
+
+    async def choose(session, requested, effort):
+        available = state['catalog'] or await session.models()
+        state['catalog'] = available
+        chosen = next((m for m in available if m['model'] == requested), None)
+        if requested == 'codex-default':
+            chosen = next((m for m in available if m.get('isDefault')), available[0] if available else None)
+        if not chosen or effort not in [x['reasoningEffort'] for x in chosen['supportedReasoningEfforts']]:
+            raise ValueError('Model or reasoning effort unavailable.')
+        return chosen
+
+    async def open_session(request):
+        try:
+            body = await request.json()
+            ident = str(uuid.UUID(body['session_id']))
+            owner = body['owner_id']
+            if not isinstance(owner, str) or not 1 <= len(owner) <= 160:
+                raise ValueError('Invalid owner.')
+            seed = body.get('messages', [])
+            validate(dict(body, messages=[*seed, {'role': 'user', 'content': 'READY'}]))
+            if state['active'] >= max_active:
+                raise OverflowError('LLM busy.')
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return web.json_response({'error': {'message': 'Invalid session request.'}}, status=400)
+        except OverflowError:
+            return web.json_response({'error': {'message': 'LLM busy.'}}, status=429)
+        state['active'] += 1
+        state['busy'] = True
+        try:
+            async with asyncio.timeout(timeout):
+                await registry.open(ident, owner, body.get('model', 'codex-default'),
+                                    body.get('reasoning_effort', 'low'), seed, choose)
+            return web.json_response({'session_id': ident, 'state': 'ready', 'lease_seconds': lease})
+        except ValueError:
+            return web.json_response({'error': {'message': 'Session identity/model conflict.'}}, status=409)
+        except OverflowError:
+            return web.json_response({'error': {'message': 'Resident session limit reached.'}}, status=429)
+        except (CodexError, TimeoutError, OSError):
+            return web.json_response({'error': {'message': 'Session preparation failed or timed out.'}}, status=503)
+        finally:
+            state['active'] -= 1
+            state['busy'] = state['active'] > 0
+
+    async def touch_session(request):
+        entry = registry.entries.get(request.match_info['ident'])
+        if not entry or not entry.ready or entry.closing:
+            return web.json_response({'state': 'expired'}, status=404)
+        entry.touched = time.monotonic()
+        return web.json_response({'state': 'ready'})
+
+    async def close_session(request):
+        await registry.close(request.match_info['ident'])
+        return web.Response(status=204)
+
+    async def lifecycle(app):
+        async def reap():
+            while True:
+                await asyncio.sleep(min(10, lease / 2))
+                await registry.reap()
+        task = asyncio.create_task(reap())
+        yield
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        await registry.shutdown()
+
+    app.cleanup_ctx.append(lifecycle)
 
     async def completions(request):
         try:
@@ -111,19 +187,11 @@ def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
         response = None
         try:
             async with asyncio.timeout(timeout):
-                async with session_factory() as session:
-                    available = state['catalog'] or await session.models()
-                    state['catalog'] = available
-                    requested = body.get('model', 'codex-default')
-                    chosen = next((m for m in available if m['model'] == requested), None)
-                    if requested == 'codex-default':
-                        chosen = next((m for m in available if m.get('isDefault')), available[0] if available else None)
-                    if not chosen:
-                        return web.json_response({'error': {'message': 'Model unavailable; query /v1/models.'}}, status=400)
+                ident_header = request.headers.get('X-Ken-Session-Id')
+                connection = registry.use(ident_header) if ident_header else session_factory()
+                async with connection as session:
                     effort = body.get('reasoning_effort') or os.getenv('KEN_LLM_EFFORT', 'low')
-                    allowed = [x['reasoningEffort'] for x in chosen['supportedReasoningEfforts']]
-                    if effort not in allowed:
-                        return web.json_response({'error': {'message': 'Unsupported reasoning_effort for model.'}}, status=400)
+                    chosen = await choose(session, body.get('model', 'codex-default'), effort)
                     ident, created = 'chatcmpl-' + uuid.uuid4().hex, int(time.time())
                     def chunk(delta, finish=None):
                         return {'id': ident, 'object': 'chat.completion.chunk', 'created': created,
@@ -145,7 +213,13 @@ def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
                     return web.json_response({'id': ident, 'object': 'chat.completion', 'created': created,
                         'model': chosen['model'], 'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': text},
                                                              'finish_reason': 'stop'}]})
-        except (CodexError, TimeoutError, OSError, ConnectionError) as exc:
+        except KeyError:
+            return web.json_response({'error': {'message': 'Conversation session expired; reconnect.'}}, status=409)
+        except OverflowError:
+            return web.json_response({'error': {'message': 'Conversation turn busy.'}}, status=429)
+        except ValueError:
+            return web.json_response({'error': {'message': 'Model or reasoning effort unavailable.'}}, status=400)
+        except (CodexError, TimeoutError, OSError, ConnectionError):
             # Do not leak prompts, process output, credentials or upstream details.
             if response is not None:
                 with contextlib.suppress(ConnectionError, RuntimeError):
@@ -157,6 +231,9 @@ def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
             state['active'] -= 1
             state['busy'] = state['active'] > 0
 
+    app.router.add_post('/v1/sessions', open_session)
+    app.router.add_post('/v1/sessions/{ident}/heartbeat', touch_session)
+    app.router.add_delete('/v1/sessions/{ident}', close_session)
     app.router.add_get('/health', health)
     app.router.add_get('/v1/models', models)
     for path in ('/v1/chat/completions', '/chat/completions'):
@@ -166,6 +243,9 @@ def create_app(token, session_factory=CodexSession, timeout=90, max_active=2):
 if __name__ == '__main__':
     token = os.environ.get('KEN_LLM_TOKEN', '')
     cli = os.environ.get('KEN_CODEX_CLI', DEFAULT_CLI)
-    app = create_app(token, lambda: CodexSession(cli), int(os.environ.get('KEN_LLM_TIMEOUT', '90')))
+    app = create_app(token, lambda: CodexSession(cli), timeout=int(os.environ.get('KEN_LLM_TIMEOUT', '90')),
+                     max_active=int(os.environ.get('KEN_LLM_MAX_ACTIVE', '4')),
+                     max_sessions=int(os.environ.get('KEN_LLM_MAX_SESSIONS', '16')),
+                     lease=int(os.environ.get('KEN_LLM_SESSION_LEASE', '120')))
     web.run_app(app, host='127.0.0.1', port=int(os.environ.get('KEN_LLM_PORT', '8787')),
                 access_log=None, handler_cancellation=True)

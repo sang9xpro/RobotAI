@@ -11,4 +11,6 @@ public final class AbortMessage extends Message {
     }
 
     private String reason;
+    @com.fasterxml.jackson.annotation.JsonProperty("turn_id")
+    private String turnId;
 }

@@ -49,7 +49,7 @@ function applyDocumentTitle(route: RouteLocationNormalized) {
   const baseTitle = import.meta.env.VITE_APP_TITLE || i18n.global.t('common.appTitle')
   const routeTitle = route.meta?.title
   if (routeTitle) {
-    const title = routeTitle.startsWith('router.') ? i18n.global.t(routeTitle) : routeTitle
+    const title = routeTitle.startsWith('router.') || routeTitle.startsWith('robotai.') ? i18n.global.t(routeTitle) : routeTitle
     document.title = `${title} - ${baseTitle}`
   } else {
     document.title = baseTitle

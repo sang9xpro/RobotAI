@@ -270,6 +270,7 @@ async function sendMessage() {
 </script>
 
 <template>
+  <a-alert type="info" :message="t('robotai.browserHint')" show-icon />
   <a-layout class="chat-layout">
     <!-- 顶部导航栏 -->
     <a-layout-header class="chat-header">

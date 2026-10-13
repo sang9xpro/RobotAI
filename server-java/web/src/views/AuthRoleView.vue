@@ -8,6 +8,7 @@ import { queryAuthRoles, getAuthRolePermissionConfig, updateAuthRolePermissions 
 import { useRequest } from '@/composables/useRequest'
 import { resolveMenuIcon } from '@/layouts/menuIcons'
 import type { AuthRole, AuthRolePermissionConfig, PermissionTreeNode } from '@/types/authRole'
+import { authRoleDisplayName, authRoleDescription, permissionDisplayName } from '@/utils/accessControlLabels'
 
 type PermissionTableItem = PermissionTreeNode & {
   children?: PermissionTableItem[]
@@ -39,6 +40,7 @@ const filteredAuthRoles = computed(() => {
   return authRoles.value.filter((item) => {
     return (
       item.authRoleName.toLowerCase().includes(keyword) ||
+      authRoleDisplayName(item, t).toLowerCase().includes(keyword) ||
       item.roleKey.toLowerCase().includes(keyword)
     )
   })
@@ -306,7 +308,7 @@ function toPermissionTableData(nodes: PermissionTreeNode[]): PermissionTableItem
                   @click="selectAuthRole(item.authRoleId)"
                 >
                   <div class="auth-role-item__header">
-                    <span class="auth-role-item__name">{{ item.authRoleName }}</span>
+                    <span class="auth-role-item__name">{{ authRoleDisplayName(item, t) }}</span>
                     <a-tag :color="item.status === '1' ? 'success' : 'default'">
                       {{ item.status === '1' ? t('common.enable') : t('common.disable') }}
                     </a-tag>
@@ -315,7 +317,7 @@ function toPermissionTableData(nodes: PermissionTreeNode[]): PermissionTableItem
                     <span>{{ item.roleKey }}</span>
                   </div>
                   <div class="auth-role-item__desc">
-                    {{ item.description || t('authRole.noDescription') }}
+                    {{ authRoleDescription(item, t) || t('authRole.noDescription') }}
                   </div>
                 </button>
               </a-list-item>
@@ -329,7 +331,7 @@ function toPermissionTableData(nodes: PermissionTreeNode[]): PermissionTableItem
           <template #title>
             <div class="permission-panel-title">
               <span>{{ t('authRole.permissionWorkbench') }}</span>
-              <a-tag v-if="selectedAuthRole" color="blue">{{ selectedAuthRole.authRoleName }}</a-tag>
+              <a-tag v-if="selectedAuthRole" color="blue">{{ authRoleDisplayName(selectedAuthRole, t) }}</a-tag>
             </div>
           </template>
           <template #extra>
@@ -383,7 +385,7 @@ function toPermissionTableData(nodes: PermissionTreeNode[]): PermissionTableItem
                           <span v-else>{{ record.icon ? record.icon.slice(0, 2).toUpperCase() : '#' }}</span>
                         </div>
                         <div class="permission-name-cell__content">
-                          <div class="permission-name-cell__title">{{ record.name }}</div>
+                          <div class="permission-name-cell__title">{{ permissionDisplayName(record, t) }}</div>
                           <div class="permission-name-cell__sub">
                             <span>#{{ record.permissionId }}</span>
                             <span v-if="record.children?.length">

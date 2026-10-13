@@ -29,6 +29,7 @@ export interface Config {
   projectId?: string
   region?: string
   enableThinking?: boolean
+  reasoningEffort?: string
   // 提交时按模型清单静默带上，页面不展示不可编辑
   contextLength?: number
   // 表单字段由 config/providerConfig.ts 的 ConfigField.name 驱动，动态下标取值靠这条索引签名。
@@ -82,6 +83,15 @@ export interface LlmModelOption {
   label: string
 }
 
+export interface AvailableChatGptModel {
+  id: string
+  label: string
+  defaultModel: boolean
+  inputModalities: string[]
+  reasoningEfforts: string[]
+  defaultReasoningEffort?: string
+}
+
 /**
  * LLM 工厂模型信息
  */
@@ -102,4 +112,14 @@ export interface LLMFactory {
   url?: string
   rank?: string
   status?: string
+}
+
+export interface ConfigTestResult {
+  success: boolean
+  elapsedMillis: number
+  detail: string
+}
+
+export interface ConfigTtsTestResult {
+  audioUrl: string
 }

@@ -12,6 +12,9 @@ import java.time.LocalDateTime;
 
 @Mapper
 public interface MessageMapper extends BaseMapper<MessageDO> {
+    IPage<MessageProjection> selectDeviceHistory(Page<MessageProjection> page,
+            @Param("filter") com.xiaozhi.common.model.req.DeviceHistoryPageReq filter,
+            @Param("scopeUserId") Integer scopeUserId);
 
     IPage<MessageProjection> selectPage(Page<MessageProjection> page,
                                         @Param("deviceId") String deviceId,

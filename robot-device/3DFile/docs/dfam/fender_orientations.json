@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/fender.stl",
+  "scale": {
+    "bbox_diagonal_mm": 142.5351,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 422.07,
+        "support_area_pct": 4.2,
+        "build_height_mm": 30.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 145.19,
+        "support_area_pct": 1.4,
+        "build_height_mm": 30.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 3267.64,
+        "support_area_pct": 32.6,
+        "build_height_mm": 30.99
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 3259.34,
+        "support_area_pct": 32.5,
+        "build_height_mm": 30.99
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 957.13,
+        "support_area_pct": 9.5,
+        "build_height_mm": 135.85
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 994.8,
+        "support_area_pct": 9.9,
+        "build_height_mm": 135.85
+      }
+    ]
+  },
+  "partial": false
+}

@@ -15,7 +15,9 @@ public final class ListenMessage extends Message {
     private ListenState state;
     private ListenMode mode;
     private String text;
+    @com.fasterxml.jackson.annotation.JsonProperty("listening_context")
+    private com.fasterxml.jackson.databind.JsonNode listeningContext;
     @com.fasterxml.jackson.annotation.JsonProperty("turn_id")
     private String turnId;
-    private com.xiaozhi.common.model.bo.SpeakerHint speaker;
+    private com.fasterxml.jackson.databind.JsonNode speaker;
 }

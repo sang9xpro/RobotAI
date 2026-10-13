@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import zhCN from '../zh-CN'
 import enUS from '../en-US'
+import viVN from '../vi-VN'
 import { CONNECTION_STATUS_KEYS } from '../../services/websocket'
 
 const SRC_ROOT = fileURLToPath(new URL('../../', import.meta.url))
@@ -94,6 +95,12 @@ const zhKeys = flatten(zhCN as LocaleTree)
 const enKeys = flatten(enUS as LocaleTree)
 
 describe('locale 对齐', () => {
+  it('Vietnamese retains every key and interpolation placeholder', () => {
+    const viKeys = flatten(viVN as LocaleTree)
+    expect([...viKeys.keys()].sort()).toEqual([...enKeys.keys()].sort())
+    for (const [key, text] of enKeys) expect(placeholders(viKeys.get(key)!)).toBe(placeholders(text))
+  })
+
   it('zh-CN 与 en-US 的 key 集合完全一致', () => {
     const onlyZh = [...zhKeys.keys()].filter((key) => !enKeys.has(key))
     const onlyEn = [...enKeys.keys()].filter((key) => !zhKeys.has(key))

@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @Getter
 @Setter
 public class DialogueContext {
+    private final ConversationTransport conversationTransport = new ConversationTransport();
+    private final IndividualConversation individualConversation = new IndividualConversation();
 
     private Persona persona;
     private final SpeakerTurnContext speakerTurn = new SpeakerTurnContext();

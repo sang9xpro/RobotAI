@@ -392,6 +392,10 @@ public class MessageHandler {
         }
     }
 
+    public void enableIndividualConversation(ChatSession session) {
+        personaFactory.beginIndividualConversation(session);
+    }
+
     private void handleListenMessage(ChatSession chatSession, ListenMessage message) {
         String sessionId = chatSession.getSessionId();
         log.info("收到listen消息 - SessionId: {}, State: {}, Mode: {}", sessionId, message.getState(), message.getMode());
@@ -410,6 +414,8 @@ public class MessageHandler {
         // 根据state处理不同的监听状态
         switch (message.getState()) {
             case ListenState.START:
+                var transport = chatSession.getDialogueContext().getConversationTransport();
+                if (transport.enabled() && !transport.begin(message.getGeneration() == null ? -1 : message.getGeneration(), message.getTurnId())) return;
                 chatSession.getDialogueContext().getSpeakerTurn().begin(message.getTurnId());
                 // 设备开始录音，进入聆听状态
                 log.info("开始监听 - Mode: {}", message.getMode());
@@ -423,11 +429,14 @@ public class MessageHandler {
                 break;
 
             case ListenState.STOP:
+                var stopTransport = chatSession.getDialogueContext().getConversationTransport();
+                if (stopTransport.enabled() && !stopTransport.accepts(message.getGeneration() == null ? -1 : message.getGeneration(), message.getTurnId())) return;
                 // Old clients omit turn_id; they keep the existing protocol and no speaker hint.
                 if (message.getTurnId() != null && !chatSession.getDialogueContext().getSpeakerTurn().accepts(message.getTurnId())) return;
-                var speakerHint = chatSession.getDialogueContext().getSpeakerTurn().complete(message.getTurnId(), message.getSpeaker());
+                var speakerHint = chatSession.getDialogueContext().getSpeakerTurn().complete(message.getTurnId(), localMetadata(message.getSpeaker(),com.xiaozhi.common.model.bo.SpeakerHint.class));
                 if (chatSession.getMode() == ListenMode.MANUAL && chatSession.getSpeechTurn() != null) {
                     chatSession.getSpeechTurn().setSpeaker(speakerHint);
+                    if (stopTransport.enabled()) chatSession.getSpeechTurn().setListeningContext(localMetadata(message.getListeningContext(),com.xiaozhi.common.model.bo.ListeningContext.class));
                 }
                 // 停止监听
                 log.info("停止监听 - Mode: {}", chatSession.getMode());
@@ -484,6 +493,11 @@ public class MessageHandler {
     }
 
     private void handleAbortMessage(ChatSession session, AbortMessage message) {
+        var transport = session.getDialogueContext().getConversationTransport();
+        if (transport.enabled()) {
+            if (!transport.accepts(message.getGeneration() == null ? -1 : message.getGeneration(), message.getTurnId())) return;
+            transport.cancel();
+        }
         String deviceId = session.getDevice() != null ? session.getDevice().getDeviceId() : null;
         applicationContext.publishEvent(new ChatAbortedEvent(this, session.getSessionId(), deviceId, message.getReason()));
     }
@@ -534,13 +548,32 @@ public class MessageHandler {
         }
     }
 
+    private static <T> T localMetadata(com.fasterxml.jackson.databind.JsonNode node,Class<T> type) {
+        if(node==null || !node.isObject()) return null;
+        try { return com.xiaozhi.utils.JsonUtil.OBJECT_MAPPER.treeToValue(node,type); }
+        catch(Exception invalid) { return null; }
+    }
+
     public void handleMessage(Message msg, String sessionId) {
         var chatSession = sessionManager.getSession(sessionId);
         if (chatSession == null) {
             log.warn("收到消息但会话已不存在 - SessionId: {}, MessageType: {}", sessionId, msg.getClass().getSimpleName());
             return;
         }
+        var contextTransport = chatSession.getDialogueContext().getConversationTransport();
+        if (contextTransport.enabled() && (msg instanceof ListenMessage || msg instanceof PlaybackMessage || msg instanceof AbortMessage)
+                && !sessionId.equals(msg.getSessionId())) return;
         switch (msg) {
+            case PlaybackMessage m -> {
+                var transport = chatSession.getDialogueContext().getConversationTransport();
+                if (transport.accepts(m.getGeneration() == null ? -1 : m.getGeneration(), m.getTurnId())) {
+                    if (m.getAudioSeq() != null) transport.acknowledge(m.getAudioSeq());
+                    if ("completed".equals(m.getState()) && transport.confirmCompleted()) {
+                        chatSession.getDialogueContext().getIndividualConversation().playbackCompleted(System.nanoTime()/1_000_000);
+                        if (chatSession.getPlayer() != null) chatSession.getPlayer().confirmPlaybackCompleted();
+                    }
+                }
+            }
             case ListenMessage m -> handleListenMessage(chatSession, m);
             case IotMessage m -> handleIotMessage(chatSession, m);
             case AbortMessage m -> handleAbortMessage(chatSession, m);

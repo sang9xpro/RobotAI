@@ -229,13 +229,29 @@ describe('useRoleManager 提供商展示信息', () => {
   it('音色与智能体提供商共用一张表', () => {
     const { formatProviderName, getVoiceTagColor } = useRoleManager()
 
-    expect(formatProviderName('edge')).toBe('微软Edge')
-    expect(formatProviderName('aliyun-nls')).toBe('阿里云NLS')
+    expect(formatProviderName('edge')).toBe('Microsoft Edge')
+    expect(formatProviderName('aliyun-nls')).toBe('Aliyun NLS')
     expect(formatProviderName('coze')).toBe('Coze')
     expect(formatProviderName('unknown')).toBe('Unknown')
 
     expect(getVoiceTagColor('volcengine')).toBe('blue')
     expect(getVoiceTagColor('tencent')).toBe('green')
     expect(getVoiceTagColor()).toBe('green')
+  })
+})
+
+
+describe('RobotAI independent TTS configurations', () => {
+  it('retains two accounts of the same provider and custom voice providers', async () => {
+    stubVoiceJsonFetch()
+    serviceMock.queryConfigs.mockResolvedValue(page([
+      { configId: 20, provider: 'aliyun' }, { configId: 21, provider: 'aliyun' },
+      { configId: 22, provider: 'openai' }, { configId: 23, provider: 'openai', state: '0' },
+    ]))
+    const manager = useRoleManager()
+    await manager.loadAllVoices()
+    expect(manager.allVoices.value.filter(v => v.value === 'zhichu').map(v => v.ttsId)).toEqual([20, 21])
+    expect(manager.allVoices.value.find(v => v.value === 'alloy')?.ttsId).toBe(22)
+    expect(manager.ttsConfigurations.value.map(c => c.configId)).toEqual([20, 21, 22])
   })
 })

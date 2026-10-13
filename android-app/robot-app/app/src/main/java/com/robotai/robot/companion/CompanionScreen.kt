@@ -5,8 +5,6 @@ import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,9 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -40,7 +38,10 @@ import java.util.*
     var front by remember(recognition) { mutableStateOf(recognition.prefs.getBoolean("front",true)) }
     val context = LocalContext.current
     val mind = remember { CompanionMind() }
-    var tab by remember { mutableStateOf("Ken") }
+    var tab by rememberSaveable { mutableStateOf("Ken") }
+    val conversationVisible = docked || tab == "Ken" || tab == "Hội thoại"
+    LaunchedEffect(vm, conversationVisible) { vm.setConversationScreen(conversationVisible) }
+    DisposableEffect(vm) { onDispose { vm.setConversationScreen(false) } }
     LaunchedEffect(music.youtubeId) { if (music.youtubeId.isNotBlank()) tab = "Ken" }
     LaunchedEffect(awake,teachingUi.lesson.phase) {
         while(awake && teachingUi.lesson.phase !in listOf(LessonPhase.IDLE,LessonPhase.COMPLETE)) {
@@ -51,13 +52,16 @@ import java.util.*
     var wall by remember { mutableStateOf(System.currentTimeMillis()) }
     val reaction = identityUi.gestureReaction?.takeIf { awake && it.active(now) }
     val reactionName = identityUi.people.firstOrNull { it.id == reaction?.personId }?.name
-    val loving = reaction?.kind?.loving == true && reactionName != null
+    val knownReaction = reaction?.takeIf { reactionName != null }
+    val visualReaction = knownReaction?.takeIf { state.phase !in listOf(Phase.SLEEPING, Phase.ERROR) }
+    val loving = visualReaction?.kind?.loving == true
+    var touchedAt by remember { mutableStateOf(-1L) }
     val face = identityUi.faces.isNotEmpty() || identityUi.trackedPeople.any { it.visible }
     val gaze = (identityUi.faces.firstOrNull()?.x ?: identityUi.trackedPeople.firstOrNull { it.visible }?.box?.cx?.let { it*2-1 })?.let { if(front) -it else it } ?: 0f
     var greeting by remember { mutableStateOf("Chào bạn, mình là Ken.") }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if (it) vm.listen() }
-    LaunchedEffect(state.connected) {
-        if (!docked && state.connected && context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+    LaunchedEffect(state.connected, conversationVisible) {
+        if (conversationVisible && !docked && state.connected && context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
             permission.launch(Manifest.permission.RECORD_AUDIO)
     }
     LaunchedEffect(awake) {
@@ -78,18 +82,33 @@ import java.util.*
         if (state.spokenSentence.isNotBlank()) mind.sentence(state.spokenSentence, now)
         if (state.speechEmotion.isNotBlank()) mind.emotion(state.speechEmotion)
     }
+    val visualMood = VisualMoodPolicy.select(mind.mood(state.phase, now, face), state.phase,
+        identityUi.facialExpression, now, awake, identityUi.expressionsEnabled && identityUi.enrollment==null && !identityUi.voiceBusy &&
+            teachingUi.lesson.phase in listOf(LessonPhase.IDLE,LessonPhase.COMPLETE),
+        recognition.hasRecentSpeech(now), directReaction = visualReaction != null || touchedAt>=0 && now-touchedAt in 0..3500)
+    val mood = visualMood.mood
+    val motionReaction = if (knownReaction != null && knownReaction.atMs >= touchedAt)
+        KenReaction.valueOf(knownReaction.kind.name) else if (touchedAt >= 0L) KenReaction.TOUCH else null
+    val motionAt = if (motionReaction == KenReaction.TOUCH) touchedAt else knownReaction?.atMs ?: -1L
+    com.robotai.robot.motion.KenMotionHost(KenMotionInput(state.phase, mood, gaze,
+        musicPlaying = music.phase == "playing", reaction = motionReaction, reactionAtMs = motionAt,
+        visualMood = visualMood.fromCamera), vm.speechLevel,
+        active = docked || tab in listOf("Ken", "Hội thoại", "Thị giác")) {
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Color(0xff08111b))) {
         com.robotai.robot.identity.CameraHost(recognition, awake, !docked && tab in listOf("Thị giác", "Người quen"), front, permissionButtonVisible = !docked)
         if (docked) {
-            com.robotai.robot.dock.DockedConversation(vm, session, roleId, gaze, onExitDock, loving = loving, happy = reaction != null)
+            com.robotai.robot.dock.DockedConversation(vm, session, roleId, gaze, onExitDock, loving = loving, happy = visualReaction != null, onFaceTouch = { touchedAt = SystemClock.elapsedRealtime(); mind.touch(touchedAt) })
         } else {
             Text("${identityUi.status} · Người nói: ${identityUi.speaker}", color=Color.LightGray, style=MaterialTheme.typography.bodySmall)
             com.robotai.robot.identity.RecognizedPeopleStatus(identityUi)
             com.robotai.robot.identity.GestureReadinessStatus(identityUi, awake, Modifier.padding(horizontal=16.dp))
             Row(Modifier.horizontalScroll(rememberScrollState())) {
                 listOf("Ken", "Hội thoại", "Thị giác", "Người quen", "Tiện ích", "Ký ức", "Đế robot").forEach { name ->
-                    TextButton(onClick = { tab = name }, modifier = Modifier.testTag("tab-$name")) { Text(name, color = if (tab == name) Color.Cyan else Color.LightGray) }
+                    TextButton(onClick = {
+                        vm.setConversationScreen(name == "Ken" || name == "Hội thoại")
+                        tab = name
+                    }, modifier = Modifier.testTag("tab-$name")) { Text(name, color = if (tab == name) Color.Cyan else Color.LightGray) }
                 }
             }
             if (tab == "Hội thoại") RobotScreen(vm, session, roleId != null)
@@ -97,9 +116,8 @@ import java.util.*
                 when (tab) {
                     "Ken" -> {
                         Text(SimpleDateFormat("HH:mm · EEEE, dd/MM", Locale("vi", "VN")).format(Date(wall)), color = Color.LightGray)
-                        val mood = if (reaction != null) Mood.HAPPY else mind.mood(state.phase, now, face)
                         CompanionFace(mood, state.phase, gaze, Modifier.fillMaxWidth().height(260.dp).testTag("companion-face").clickable {
-                            mind.touch(now); vm.interaction(); greeting = "Mình đây! Rất vui được ở bên bạn."
+                            touchedAt = SystemClock.elapsedRealtime(); mind.touch(touchedAt); vm.interaction(); greeting = "Mình đây! Rất vui được ở bên bạn."
                         }, loving = loving, musicPlaying = music.phase == "playing")
                         MusicPanel(music, vm::pauseMusic, vm::stopMusic, Modifier.fillMaxWidth(), vm::attachYouTube, vm::detachYouTube)
                         Text(when (mood) { Mood.HAPPY -> "Vui"; Mood.CURIOUS -> "Tò mò"; Mood.SLEEPY -> "Buồn ngủ"; Mood.CARING -> "Lắng nghe bạn"; else -> "Bình yên" }, color = Color.Cyan)
@@ -123,10 +141,11 @@ import java.util.*
                         Text("Cứ nói với Ken khi đang thức. Tự ngủ sau 2 phút yên lặng; gọi “${vm.wakePhrase} ơi” để đánh thức.", color = Color.Gray)
                     }
                     "Thị giác" -> {
-                        CompanionFace(if (reaction != null) Mood.HAPPY else mind.mood(state.phase, now, face), state.phase, gaze, Modifier.fillMaxWidth().height(100.dp), loving = loving)
+                        CompanionFace(mood, state.phase, gaze, Modifier.fillMaxWidth().height(100.dp), loving = loving)
+                        com.robotai.robot.identity.ExpressionReadinessStatus(identityUi,awake,now)
                         VisionPanel(session, recognition, front) { front=it; recognition.prefs.edit().putBoolean("front",it).apply() }
                     }
-                    "Người quen" -> com.robotai.robot.identity.PeoplePanel(recognition, awake && state.phase in listOf(Phase.IDLE,Phase.INTERRUPTED,Phase.LISTENING), vm::enrollVoice, vm::cancelVoiceEnrollment)
+                    "Người quen" -> com.robotai.robot.identity.PeoplePanel(recognition, awake && !state.connecting && state.phase in listOf(Phase.IDLE,Phase.INTERRUPTED), vm::enrollVoice, vm::cancelVoiceEnrollment,session,roleId,vm::disconnect,vm::deletePerson,awake=awake)
 
                     "Tiện ích" -> UtilityPanel(session)
                     "Ký ức" -> MemoryPanel(session, roleId, vm::disconnect)
@@ -138,30 +157,18 @@ import java.util.*
     if(docked) com.robotai.robot.identity.GestureReadinessStatus(identityUi, awake,
         Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal=24.dp,vertical=8.dp)
             .background(Color(0xd9030909), MaterialTheme.shapes.small).padding(horizontal=12.dp,vertical=6.dp))
-    GestureEffects(reaction, reactionName)
+    GestureEffects(visualReaction, reactionName)
+    }
     }
 }
 
-@Composable fun CompanionFace(mood: Mood, phase: Phase, gaze: Float, modifier: Modifier, loving: Boolean = false, musicPlaying: Boolean = false) {
-    val transition = rememberInfiniteTransition(label = "face")
-    val blink by transition.animateFloat(1f, .08f, infiniteRepeatable(keyframes { durationMillis = 4200; 1f at 0; 1f at 3700; .08f at 3850; 1f at 4000 }), label = "blink")
-    val speech by transition.animateFloat(.85f, 1f, infiniteRepeatable(tween(200), RepeatMode.Reverse), label = "speech")
-    val look by animateFloatAsState(gaze.coerceIn(-1f,1f), label = "look")
-    Canvas(modifier) {
-        val color = if (musicPlaying) androidx.compose.ui.graphics.lerp(Color(0xff67e8dc), Color(0xffee85d5), (speech - .85f) / .15f) else if (phase == Phase.ERROR) Color(0xffff9988) else when(mood) {
-            Mood.HAPPY -> Color(0xff79f4ac); Mood.CARING -> Color(0xffffca99); Mood.SLEEPY -> Color(0xff466775); else -> Color(0xff34d4de)
-        }
-        val w = size.width * .25f
-        val baseH = size.height * when(mood) { Mood.SLEEPY -> .04f; Mood.HAPPY -> .22f; Mood.CARING -> .28f; else -> .4f }
-        val h = baseH * blink * if (phase == Phase.SPEAKING || musicPlaying) speech else 1f
-        for ((i, x) in listOf(size.width*.17f, size.width*.59f).withIndex()) {
-            val musicSway = if (musicPlaying) (speech - .925f) * size.height * .3f else 0f
-            val offset = musicSway + if (mood == Mood.CURIOUS && i == 1) -size.height*.05f else 0f
-            if (loving) drawSocialHeart(Offset(x + w / 2 + look * size.width * .07f, size.height / 2), minOf(w, size.height * .55f))
-            else drawRoundRect(color, Offset(x + look * size.width*.07f, (size.height-h)/2+offset), Size(w,h), CornerRadius(w*.35f))
-        }
-        if (mood == Mood.HAPPY) drawArc(color, 10f, 160f, false, Offset(size.width*.43f,size.height*.64f), Size(size.width*.14f,size.height*.1f), style = androidx.compose.ui.graphics.drawscope.Stroke(4.dp.toPx()))
-    }
+/** Shared Ken renderer; the enclosing host owns the actual reaction and speech meter. */
+@Composable fun CompanionFace(mood: Mood, phase: Phase, gaze: Float, modifier: Modifier,
+    loving: Boolean = false, musicPlaying: Boolean = false) {
+    val loveAt = remember(loving) { if (loving) SystemClock.elapsedRealtime() else -1L }
+    com.robotai.robot.motion.KenFace(KenMotionInput(phase = phase, mood = mood, gaze = gaze,
+        musicPlaying = musicPlaying, reaction = if (loving) KenReaction.FINGER_HEART else null,
+        reactionAtMs = loveAt), modifier)
 }
 
 @Composable fun RobotLinkPanel(tools: DeviceRobotTools) {

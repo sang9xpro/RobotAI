@@ -5,6 +5,9 @@ import com.xiaozhi.ai.stt.SttService;
 import com.xiaozhi.ai.stt.providers.*;
 import com.xiaozhi.common.port.ProviderTokenClient;
 import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.event.AiConfigChangedEvent;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Resource;
@@ -174,6 +177,7 @@ public class SttServiceFactory {
         SttService service = switch (config.getProvider()) {
             case "phowhisper" -> new PhoWhisperSttService(
                     config.getApiUrl() == null || config.getApiUrl().isBlank() ? phoWhisperApiUrl : config.getApiUrl());
+            case "openai" -> new OpenAiSttService(config);
             case "tencent" -> new TencentSttService(config);
             case "aliyun" -> new AliyunSttService(config);
             case "aliyun-nls" -> new AliyunNlsSttService(config, tokenClient);
@@ -217,6 +221,11 @@ public class SttServiceFactory {
             throw new IllegalStateException("本地语音识别不可用，SenseVoice 与 Vosk 模型都未就位，请下载模型或为该角色配置第三方 STT");
         }
         return vosk;
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onAiConfigChanged(AiConfigChangedEvent event) {
+        if ("stt".equals(event.getConfigType())) removeCache(new ConfigBO().setConfigId(event.getConfigId()));
     }
 
     public void removeCache(ConfigBO config) {

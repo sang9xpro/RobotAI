@@ -18,6 +18,7 @@ export const STORAGE_REMEMBER_ME = 'rememberMe'
  * 主题相关
  */
 export const STORAGE_THEME_MODE = 'theme-mode'
+export const STORAGE_SIDEBAR_WIDTH = 'sidebar-width'
 
 /**
  * 语言相关

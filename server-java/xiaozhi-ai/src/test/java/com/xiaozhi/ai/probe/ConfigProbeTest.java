@@ -40,8 +40,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * 钉住配置试拨的三条通道：语音配置走真实识别往返且不得带真实 configId 进下游缓存，
- * 视觉模型必须发图而不是发纯文本，其余聊天模型仍走纯文本；
- * 同时钉住协议白名单、上游报文不回显、空 generations 与内嵌样本本身的格式。
+ * Vision uses the entered question and optional uploaded image; chat models use plain text.
+ * Also covers endpoint protocols, sanitized provider failures, empty answers and the STT sample format.
  */
 @ExtendWith(MockitoExtension.class)
 class ConfigProbeTest {
@@ -153,24 +153,68 @@ class ConfigProbeTest {
         ConfigProbeResultBO response = configProbe.probe(sttConfig());
 
         assertThat(response.success()).isFalse();
-        assertThat(response.message()).isEqualTo("连接测试失败，详情见服务端日志");
+        assertThat(response.message()).isEqualTo("Kiểm tra kết nối thất bại. Xem chi tiết trong log máy chủ.");
         verify(sttServiceFactory).removeCache(any(ConfigBO.class));
         verify(tokenClient).removeCache(any(ConfigBO.class));
     }
 
     @Test
-    void visionTestSendsImageAlongWithQuestion() {
+    void visionTestSendsEnteredContentWithoutAnInventedImage() {
         when(chatModelFactory.createChatModel(any(ConfigBO.class), any(RoleBO.class))).thenReturn(chatModel);
-        when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse("图片里是一个红色的圆"));
+        when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse("Xin chào bạn"));
 
-        ConfigProbeResultBO response = configProbe.probe(llmConfig("vision"));
+        ConfigProbeResultBO response = configProbe.probe(llmConfig("vision"), null, "Hãy chào tôi bằng tiếng Việt.");
 
-        List<Media> media = sentUserMessage().getMedia();
-        assertThat(media).hasSize(1);
-        assertThat(media.get(0).getMimeType()).isEqualTo(MimeTypeUtils.IMAGE_PNG);
-        assertThat(media.get(0).getDataAsByteArray()).isEqualTo(ConfigProbe.imagePng());
+        UserMessage sent = sentUserMessage();
+        assertThat(sent.getText()).isEqualTo("Hãy chào tôi bằng tiếng Việt.");
+        assertThat(sent.getMedia()).isEmpty();
         assertThat(response.success()).isTrue();
-        assertThat(response.message()).contains("红色的圆");
+        assertThat(response.message()).isEqualTo("Kiểm tra văn bản thành công. Phản hồi mô hình: Xin chào bạn");
+    }
+
+    @Test
+    void visionTestSendsUploadedImageAndExactEnteredQuestion() {
+        when(chatModelFactory.createChatModel(any(ConfigBO.class), any(RoleBO.class))).thenReturn(chatModel);
+        when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse("Trong ảnh có một chiếc xe."));
+        byte[] uploaded = {(byte) 0xff, (byte) 0xd8, 1, 2};
+        Media image = Media.builder().mimeType(MimeTypeUtils.IMAGE_JPEG).data(uploaded).build();
+
+        ConfigProbeResultBO response = configProbe.probeVision(llmConfig("vision"), "Trong ảnh có gì? Trả lời bằng tiếng Việt.", image);
+
+        UserMessage sent = sentUserMessage();
+        assertThat(sent.getText()).isEqualTo("Trong ảnh có gì? Trả lời bằng tiếng Việt.");
+        List<Media> media = sent.getMedia();
+        assertThat(media).hasSize(1);
+        assertThat(media.get(0).getMimeType()).isEqualTo(MimeTypeUtils.IMAGE_JPEG);
+        assertThat(media.get(0).getDataAsByteArray()).isEqualTo(uploaded);
+        assertThat(response.success()).isTrue();
+        assertThat(response.message()).isEqualTo("Kiểm tra Vision thành công. Phản hồi mô hình: Trong ảnh có một chiếc xe.");
+    }
+
+    @Test
+    void visionRejectsBlankContentAndNonVisionConfigurationBeforeCallingProvider() {
+        assertThat(configProbe.probeVision(llmConfig("vision"), "  ", null).success()).isFalse();
+        assertThat(configProbe.probeVision(llmConfig("chat"), "Hãy mô tả ảnh", null).success()).isFalse();
+        verifyNoInteractions(chatModelFactory);
+    }
+
+    @Test
+    void visionDoesNotReportSuccessForAnEmptyAnswer() {
+        when(chatModelFactory.createChatModel(any(ConfigBO.class), any(RoleBO.class))).thenReturn(chatModel);
+        when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse("  "));
+        ConfigProbeResultBO response = configProbe.probeVision(llmConfig("vision"), "Nội dung thử", null);
+        assertThat(response.success()).isFalse();
+        assertThat(response.message()).isEqualTo("Mô hình không trả về nội dung phản hồi.");
+    }
+
+    @Test
+    void visionReportsProviderErrorsInVietnameseWithoutEchoingSecrets() {
+        when(chatModelFactory.createChatModel(any(ConfigBO.class), any(RoleBO.class))).thenReturn(chatModel);
+        when(chatModel.call(any(Prompt.class))).thenThrow(new HttpClientErrorException(
+                HttpStatus.UNAUTHORIZED, "Unauthorized", "private-key".getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8));
+        ConfigProbeResultBO response = configProbe.probeVision(llmConfig("vision"), "Nội dung thử", null);
+        assertThat(response.success()).isFalse();
+        assertThat(response.message()).isEqualTo("API từ chối xác thực (401). Kiểm tra API key và quyền tài khoản.");
     }
 
     @Test
@@ -204,7 +248,7 @@ class ConfigProbeTest {
         ConfigProbeResultBO response = configProbe.probe(llmConfig("chat"));
 
         assertThat(response.success()).isFalse();
-        assertThat(response.message()).contains("模型未返回有效结果");
+        assertThat(response.message()).contains("Mô hình không trả về kết quả hợp lệ");
     }
 
     /** 下游报文可能带内部地址、账号线索甚至密钥片段，只按状态码给结论，原文不出前端 */
@@ -229,14 +273,14 @@ class ConfigProbeTest {
         ConfigProbeResultBO response = configProbe.probe(llmConfig("chat").setApiUrl("file:///etc/passwd"));
 
         assertThat(response.success()).isFalse();
-        assertThat(response.message()).isEqualTo("接口地址只支持 http/https/ws/wss");
+        assertThat(response.message()).isEqualTo("Địa chỉ API chỉ hỗ trợ http/https/ws/wss.");
         verifyNoInteractions(chatModelFactory);
     }
 
     @Test
-    void ttsConfigTypeIsStillRejected() {
+    void unsupportedConfigTypeIsRejected() {
         ConfigProbeResultBO response = configProbe.probe(
-                new ConfigBO().setConfigId(CONFIG_ID).setConfigType("tts"));
+                new ConfigBO().setConfigId(CONFIG_ID).setConfigType("oss"));
 
         assertThat(response.success()).isFalse();
         assertThat(response.message()).isEqualTo("暂不支持测试该类型配置");
@@ -284,15 +328,6 @@ class ConfigProbeTest {
         List<byte[]> second = ConfigProbe.speechFrames();
 
         assertThat(second.get(2)).containsExactly(original);
-    }
-
-    @Test
-    void imageSampleIsPng() {
-        byte[] pngMagic = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
-
-        byte[] image = ConfigProbe.imagePng();
-
-        assertThat(image).hasSizeBetween(pngMagic.length, 4096).startsWith(pngMagic);
     }
 
     private UserMessage sentUserMessage() {

@@ -55,7 +55,6 @@ class LoginFlowTest {
         compose.waitUntil(15000) { compose.onAllNodesWithText("Fixture 1").fetchSemanticsNodes().isNotEmpty() }
         compose.waitUntil(5000) { compose.onAllNodesWithText("Role 1").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("tab-Hội thoại").performClick()
-        compose.onNodeWithTag("connect").performScrollTo().performClick()
         // Hands-free mode can move straight from connected to listening, replacing the status text.
         lateinit var robot: RobotViewModel
         scenario.onActivity { robot = androidx.lifecycle.ViewModelProvider(it)[RobotViewModel::class.java] }

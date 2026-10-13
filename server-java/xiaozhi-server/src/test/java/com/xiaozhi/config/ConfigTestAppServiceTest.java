@@ -1,12 +1,15 @@
 package com.xiaozhi.config;
 
 import com.xiaozhi.ai.probe.ConfigProbe;
+import com.xiaozhi.ai.llm.factory.providers.CodexChatGptModelProvider;
 import com.xiaozhi.common.model.bo.ConfigBO;
 import com.xiaozhi.common.model.bo.ConfigProbeResultBO;
 import com.xiaozhi.common.model.req.ConfigTestReq;
 import com.xiaozhi.config.convert.ConfigConvert;
 import com.xiaozhi.config.domain.AiConfig;
 import com.xiaozhi.config.domain.repository.ConfigRepository;
+import org.springframework.ai.content.Media;
+import org.springframework.util.MimeTypeUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,6 +22,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -45,6 +49,9 @@ class ConfigTestAppServiceTest {
 
     @Mock
     private ConfigProbe configProbe;
+
+    @Mock
+    private CodexChatGptModelProvider codexChatGptModelProvider;
 
     @InjectMocks
     private ConfigTestAppService configTestAppService;
@@ -122,7 +129,7 @@ class ConfigTestAppServiceTest {
     // 试拨以前端提交内容为准，包括配置类型：即使库里保存的是 llm，表单类型不支持就直接失败、不查库
     @Test
     void unsupportedFormConfigTypeFailsWithoutQueryingRepositoryEvenIfSavedTypeIsLlm() {
-        ConfigProbeResultBO response = configTestAppService.test(request("tts"), CURRENT_USER_ID);
+        ConfigProbeResultBO response = configTestAppService.test(request("oss"), CURRENT_USER_ID);
 
         assertThat(response.success()).isFalse();
         assertThat(response.message()).isEqualTo("暂不支持测试该类型配置");
@@ -140,10 +147,68 @@ class ConfigTestAppServiceTest {
         assertThat(response).isSameAs(expected);
     }
 
+    @Test
+    void visionTestUsesEnteredQuestionAndImageWithOwnSavedCredentials() {
+        ConfigTestReq req = request("llm");
+        req.setModelType("vision");
+        req.setSampleText("Hãy đọc chữ trong ảnh.");
+        ConfigBO form = sttConfig().setConfigType("llm").setModelType("vision").setApiUrl("https://form.example.com");
+        when(configConvert.toBO(req)).thenReturn(form);
+        when(configRepository.findById(SAVED_CONFIG_ID)).thenReturn(Optional.of(savedSttConfig(CURRENT_USER_ID)));
+        Media image = Media.builder().mimeType(MimeTypeUtils.IMAGE_PNG).data(new byte[]{1, 2}).build();
+        ConfigProbeResultBO expected = ConfigProbeResultBO.success("Nội dung ảnh");
+        when(configProbe.probeVision(any(), eq(req.getSampleText()), eq(image))).thenReturn(expected);
+
+        assertThat(configTestAppService.testVisionImage(req, CURRENT_USER_ID, image)).isSameAs(expected);
+
+        ArgumentCaptor<ConfigBO> captor = ArgumentCaptor.captor();
+        verify(configProbe).probeVision(captor.capture(), eq("Hãy đọc chữ trong ảnh."), eq(image));
+        assertThat(captor.getValue().getModelType()).isEqualTo("vision");
+        assertThat(captor.getValue().getApiKey()).isEqualTo("saved-key");
+        assertThat(captor.getValue().getApiUrl()).isEqualTo("https://form.example.com");
+        assertThat(captor.getValue().getUserId()).isEqualTo(CURRENT_USER_ID);
+    }
+
+    @Test
+    void nonVisionAttachmentRequestIsRejectedBeforeResolvingCredentials() {
+        ConfigTestReq req = request("llm");
+        req.setModelType("chat");
+        assertThat(configTestAppService.testVisionImage(req, CURRENT_USER_ID, null).success()).isFalse();
+        verifyNoInteractions(configConvert, configRepository, configProbe);
+    }
+
     private ConfigBO probedConfig() {
         ArgumentCaptor<ConfigBO> captor = ArgumentCaptor.captor();
         verify(configProbe).probe(captor.capture());
         return captor.getValue();
+    }
+
+    @Test
+    void catalogFillsAnUnchangedTokenFromTheOwnedConfiguration() {
+        ConfigBO form = sttConfig().setProvider("codex-chatgpt").setConfigType("llm")
+                .setApiUrl("http://localhost:8787/v1").setApiKey(null);
+        when(configConvert.toBO(any(ConfigTestReq.class))).thenReturn(form);
+        when(configRepository.findById(SAVED_CONFIG_ID)).thenReturn(Optional.of(savedSttConfig(CURRENT_USER_ID)));
+        when(codexChatGptModelProvider.listModels(any())).thenReturn(java.util.List.of());
+
+        configTestAppService.listModels(request("llm"), CURRENT_USER_ID);
+
+        ArgumentCaptor<ConfigBO> used = ArgumentCaptor.captor();
+        verify(codexChatGptModelProvider).listModels(used.capture());
+        assertThat(used.getValue().getApiKey()).isEqualTo("saved-key");
+        assertThat(used.getValue().getApiUrl()).isEqualTo("http://localhost:8787/v1");
+        verifyNoInteractions(configProbe);
+    }
+
+    @Test
+    void catalogCannotPairAnotherUsersTokenWithAFormEndpoint() {
+        when(configConvert.toBO(any(ConfigTestReq.class))).thenReturn(sttConfig()
+                .setProvider("codex-chatgpt").setConfigType("llm").setApiUrl("http://localhost:9999/v1"));
+        when(configRepository.findById(SAVED_CONFIG_ID)).thenReturn(Optional.of(savedSttConfig(OTHER_USER_ID)));
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> configTestAppService.listModels(request("llm"), CURRENT_USER_ID));
+        verifyNoInteractions(codexChatGptModelProvider);
     }
 
     private static ConfigTestReq request(String configType) {

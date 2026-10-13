@@ -1,0 +1,51 @@
+{
+  "file": "STL/tower_side_panel.stl",
+  "scale": {
+    "bbox_diagonal_mm": 39.5228,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 10.6,
+        "support_area_pct": 0.7,
+        "build_height_mm": 20.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 10.6,
+        "support_area_pct": 0.7,
+        "build_height_mm": 20.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 10.59,
+        "support_area_pct": 0.7,
+        "build_height_mm": 34.0
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 10.59,
+        "support_area_pct": 0.7,
+        "build_height_mm": 34.0
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 659.25,
+        "support_area_pct": 44.0,
+        "build_height_mm": 2.46
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 471.82,
+        "support_area_pct": 31.5,
+        "build_height_mm": 2.46
+      }
+    ]
+  },
+  "partial": false
+}

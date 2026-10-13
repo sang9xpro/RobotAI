@@ -7,6 +7,7 @@ import com.xiaozhi.common.model.req.ConfigPageReq;
 import com.xiaozhi.common.model.req.ConfigTestReq;
 import com.xiaozhi.common.model.req.ConfigUpdateReq;
 import com.xiaozhi.common.model.resp.ConfigResp;
+import com.xiaozhi.common.model.resp.TestVoiceResp;
 import com.xiaozhi.common.model.PageResult;
 import com.xiaozhi.common.web.ResultStatus;
 import com.xiaozhi.support.ControllerTestSupport;
@@ -19,6 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.ai.content.Media;
+import org.springframework.util.MimeTypeUtils;
 
 import java.util.List;
 
@@ -28,6 +32,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -124,7 +130,10 @@ class ConfigControllerTest extends ControllerTestSupport {
                     .content(toJson(testReq())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(ResultStatus.SUCCESS))
-                .andExpect(jsonPath("$.message").value("连接成功"));
+                .andExpect(jsonPath("$.message").value("连接成功"))
+                .andExpect(jsonPath("$.data.success").value(true))
+                .andExpect(jsonPath("$.data.detail").value("连接成功"))
+                .andExpect(jsonPath("$.data.elapsedMillis").isNumber());
         }
 
         ArgumentCaptor<ConfigTestReq> captor = ArgumentCaptor.forClass(ConfigTestReq.class);
@@ -145,6 +154,98 @@ class ConfigControllerTest extends ControllerTestSupport {
                 .andExpect(jsonPath("$.code").value(ResultStatus.ERROR))
                 .andExpect(jsonPath("$.message").value("接口返回未授权（401），请检查密钥与账号权限"));
         }
+    }
+
+    @Test
+    void multipartSttDecodesWavAndReturnsTranscriptWithoutCredentials() throws Exception {
+        var req = testReq(); req.setConfigType("stt"); req.setApiKey("private-fixture-key");
+        byte[] wav = java.nio.ByteBuffer.allocate(46).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            .putInt(0x46464952).putInt(38).putInt(0x45564157).putInt(0x20746d66).putInt(16)
+            .putShort((short)1).putShort((short)1).putInt(16000).putInt(32000)
+            .putShort((short)2).putShort((short)16).putInt(0x61746164).putInt(2).putShort((short)1).array();
+        when(configTestAppService.testSttAudio(any(), eq(7), any()))
+            .thenReturn(ConfigProbeResultBO.success("Xin chào Ken"));
+        try (var ignored = mockLoginUser(7)) {
+            mockMvc.perform(multipart("/api/config/test/stt")
+                    .file(new MockMultipartFile("config", "config.json", "application/json", toJson(req).getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    .file(new MockMultipartFile("audio", "sample.wav", "audio/wav", wav)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.detail").value("Xin chào Ken"))
+                .andExpect(jsonPath("$.data.apiKey").doesNotExist());
+        }
+        var pcm = ArgumentCaptor.forClass(byte[].class);
+        verify(configTestAppService).testSttAudio(any(), eq(7), pcm.capture());
+        assertThat(pcm.getValue()).containsExactly((byte)1, (byte)0);
+    }
+
+    @Test
+    void malformedSttAudioNeverReachesProvider() throws Exception {
+        var req = testReq(); req.setConfigType("stt");
+        try (var ignored = mockLoginUser(7)) {
+            mockMvc.perform(multipart("/api/config/test/stt")
+                    .file(new MockMultipartFile("config", "config.json", "application/json", toJson(req).getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    .file(new MockMultipartFile("audio", "sample.wav", "audio/wav", new byte[]{1,2})))
+                .andExpect(status().isBadRequest());
+        }
+        verify(configTestAppService, never()).testSttAudio(any(), any(), any());
+    }
+
+    @Test
+    void multipartVisionPassesEnteredQuestionAndUploadedBytesWithDetectedMimeType() throws Exception {
+        var req = testReq();
+        req.setModelType("vision");
+        req.setSampleText("Hãy mô tả ảnh bằng tiếng Việt.");
+        req.setApiKey("private-fixture-key");
+        byte[] image = imageBytes("png", 2, 2);
+        when(configTestAppService.testVisionImage(any(), eq(7), any()))
+            .thenReturn(ConfigProbeResultBO.success("Kiểm tra Vision thành công. Phản hồi mô hình: Một hình vuông."));
+        try (var ignored = mockLoginUser(7)) {
+            mockMvc.perform(multipart("/api/config/test/vision")
+                    .file(new MockMultipartFile("config", "config.json", "application/json", toJson(req).getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    .file(new MockMultipartFile("image", "picture.png", "application/octet-stream", image)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.success").value(true))
+                .andExpect(jsonPath("$.data.detail").value("Kiểm tra Vision thành công. Phản hồi mô hình: Một hình vuông."))
+                .andExpect(jsonPath("$.data.elapsedMillis").isNumber())
+                .andExpect(jsonPath("$.data.apiKey").doesNotExist());
+        }
+        var capturedReq = ArgumentCaptor.forClass(ConfigTestReq.class);
+        var capturedImage = ArgumentCaptor.forClass(Media.class);
+        verify(configTestAppService).testVisionImage(capturedReq.capture(), eq(7), capturedImage.capture());
+        assertThat(capturedReq.getValue().getSampleText()).isEqualTo("Hãy mô tả ảnh bằng tiếng Việt.");
+        assertThat(capturedImage.getValue().getDataAsByteArray()).containsExactly(image);
+        assertThat(capturedImage.getValue().getMimeType()).isEqualTo(MimeTypeUtils.IMAGE_PNG);
+    }
+
+    @Test
+    void malformedVisionAttachmentNeverReachesProvider() throws Exception {
+        var req = testReq(); req.setModelType("vision"); req.setSampleText("Hãy mô tả ảnh.");
+        try (var ignored = mockLoginUser(7)) {
+            mockMvc.perform(multipart("/api/config/test/vision")
+                    .file(new MockMultipartFile("config", "config.json", "application/json", toJson(req).getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    .file(new MockMultipartFile("image", "fake.png", "image/png", new byte[]{1, 2, 3})))
+                .andExpect(status().isBadRequest());
+        }
+        verify(configTestAppService, never()).testVisionImage(any(), any(), any());
+    }
+
+    static byte[] imageBytes(String format, int width, int height) throws java.io.IOException {
+        var image = new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var output = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, format, output);
+        return output.toByteArray();
+    }
+
+    @Test
+    void ttsPreviewReturnsStorageUrlAndPassesCurrentUser() throws Exception {
+        var req = testReq(); req.setConfigType("tts"); req.setVoiceName("custom-voice"); req.setSampleText("Xin chào");
+        when(configTestAppService.testTtsAudio(any(), eq(7))).thenReturn(new TestVoiceResp("/uploads/preview.mp3"));
+        try (var ignored = mockLoginUser(7)) {
+            mockMvc.perform(post("/api/config/test/tts").contentType(MediaType.APPLICATION_JSON).content(toJson(req)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.audioUrl").value("/uploads/preview.mp3"));
+        }
+        var captured = ArgumentCaptor.forClass(ConfigTestReq.class);
+        verify(configTestAppService).testTtsAudio(captured.capture(), eq(7));
+        assertThat(captured.getValue().getVoiceName()).isEqualTo("custom-voice");
     }
 
     // 异常文案由 GlobalExceptionHandlerTest 集中覆盖，这里只钉路由与路径变量绑定

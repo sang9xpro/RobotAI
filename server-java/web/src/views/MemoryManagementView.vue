@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message as antMessage, type TableColumnsType } from 'ant-design-vue'
+import { useUserStore } from '@/store/user'
+import { updateRobotSummary } from '@/services/robotMemory'
 import { useTable, type TablePageParams } from '@/composables/useTable'
 import { useExport, type ExportColumn } from '@/composables/useExport'
 import { useRequest } from '@/composables/useRequest'
@@ -20,6 +22,24 @@ import dayjs, { Dayjs } from 'dayjs'
 import { useEventBus } from '@vueuse/core'
 
 const { t } = useI18n()
+const userStore = useUserStore()
+const editRecord = ref<SummaryMemory>()
+const editText = ref('')
+const { execute: saveSummary, loading: savingSummary } = useRequest()
+function canEditSummary(record: SummaryMemory) {
+  return record.deviceId === `user_chat_${userStore.userInfo?.userId}`
+}
+function openSummary(record: SummaryMemory) { editRecord.value = { ...record }; editText.value = record.summary }
+async function submitSummary() {
+  const record = editRecord.value
+  if (!record || !editText.value.trim()) return
+  const updated = await saveSummary(() => updateRobotSummary(record.roleId, String(record.id), editText.value), { showSuccess: true, successText: t('common.saveSuccess') })
+  if (updated != null && updated > 0) {
+    if (editRecord.value === record) editRecord.value = undefined
+    await fetchMemoryData()
+  }
+}
+
 const route = useRoute()
 const loadingStore = useLoadingStore()
 
@@ -205,7 +225,7 @@ async function fetchMemoryPage(
 /**
  * 删除摘要：id 是 createTime 的毫秒数；列表可能不限设备和角色，两者都取自这一行
  */
-async function handleDeleteMemory(record: { id: number; roleId: number; deviceId: string }) {
+async function handleDeleteMemory(record: { id: number | string; roleId: number; deviceId: string }) {
   const removed = await executeDeleteMemory(
     () => deleteSummaryMemory(record.roleId, record.deviceId, record.id),
     {
@@ -621,7 +641,7 @@ onMounted(async () => {
                   show-delete
                   :delete-title="t('common.confirmDelete')"
                   @delete="() => handleDeleteMemory(record as SummaryMemory)"
-                />
+                ><template #actions><a-button v-if="canEditSummary(record as SummaryMemory)" type="link" size="small" @click="openSummary(record as SummaryMemory)">{{ t('robotai.editSummary') }}</a-button></template></TableActionButtons>
               </template>
             </template>
           </a-table>
@@ -629,6 +649,10 @@ onMounted(async () => {
       </a-tabs>
     </a-card>
 
+    <a-modal :open="!!editRecord" :title="t('robotai.editSummary')" :confirm-loading="savingSummary" @ok="submitSummary" @cancel="editRecord = undefined">
+      <p>{{ t('robotai.memoryHint') }}</p>
+      <a-textarea v-model:value="editText" :maxlength="8000" :rows="10" :disabled="savingSummary" />
+    </a-modal>
     <!-- 回到顶部 -->
     <a-back-top />
   </div>

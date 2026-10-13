@@ -9,6 +9,9 @@ import java.time.LocalDateTime;
 public class MessageProjection {
 
     private Long messageId;
+    private Integer userId;
+    private String username;
+    private String ownerName;
     private String deviceId;
     private String deviceName;
     private String sender;

@@ -169,11 +169,19 @@ public class RedisSubscriber {
             // 先从 DB 刷新 device（含新 roleId），否则重建 Persona 时仍用旧角色
             DeviceBO freshDevice = deviceService.getBO(deviceId);
             if (freshDevice != null) {
+                // Redis listeners may run concurrently: never replace an old owner's
+                // session snapshot with the new owner before cleanup has finished.
+                DeviceBO connectedDevice = session.getDevice();
+                if (connectedDevice != null && !java.util.Objects.equals(
+                        connectedDevice.getUserId(), freshDevice.getUserId())) {
+                    sessionManager.closeSession(session);
+                    return;
+                }
                 freshDevice.setSessionId(session.getSessionId());
                 session.setDevice(freshDevice);
                 RoleBO role = roleService.getBO(freshDevice.getRoleId());
                 if (role != null) {
-                    session.setInactiveTimeoutSeconds(role.getInactiveTimeoutSeconds() != null
+                    session.setInactiveTimeoutSeconds(PersonaFactory.isAuthenticatedApp(session.getDevice()) ? 0 : role.getInactiveTimeoutSeconds() != null
                             ? role.getInactiveTimeoutSeconds() : 60);
                 }
             }
@@ -200,7 +208,7 @@ public class RedisSubscriber {
                 DeviceBO device = session.getDevice();
                 if (device != null && roleId.equals(device.getRoleId())) {
                     if (updatedRole != null) {
-                        session.setInactiveTimeoutSeconds(updatedRole.getInactiveTimeoutSeconds() != null
+                        session.setInactiveTimeoutSeconds(PersonaFactory.isAuthenticatedApp(session.getDevice()) ? 0 : updatedRole.getInactiveTimeoutSeconds() != null
                                 ? updatedRole.getInactiveTimeoutSeconds() : 60);
                     }
                     Persona persona = session.getPersona();
@@ -255,6 +263,12 @@ public class RedisSubscriber {
         if (session != null) {
             DeviceBO freshDevice = deviceService.getBO(deviceId);
             if (freshDevice != null) {
+                DeviceBO connectedDevice = session.getDevice();
+                if (connectedDevice != null && !java.util.Objects.equals(
+                        connectedDevice.getUserId(), freshDevice.getUserId())) {
+                    sessionManager.closeSession(session);
+                    return;
+                }
                 freshDevice.setSessionId(session.getSessionId());
                 session.setDevice(freshDevice);
                 log.info("已刷新设备信息（来自跨实例广播） - deviceId: {}", deviceId);

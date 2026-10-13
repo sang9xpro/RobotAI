@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/head_stem.stl",
+  "scale": {
+    "bbox_diagonal_mm": 43.5142,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 543.13,
+        "support_area_pct": 15.6,
+        "build_height_mm": 28.5
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 323.4,
+        "support_area_pct": 9.3,
+        "build_height_mm": 28.5
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 343.19,
+        "support_area_pct": 9.8,
+        "build_height_mm": 23.5
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 565.89,
+        "support_area_pct": 16.2,
+        "build_height_mm": 23.5
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 178.07,
+        "support_area_pct": 5.1,
+        "build_height_mm": 23.0
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 102.56,
+        "support_area_pct": 2.9,
+        "build_height_mm": 23.0
+      }
+    ]
+  },
+  "partial": false
+}

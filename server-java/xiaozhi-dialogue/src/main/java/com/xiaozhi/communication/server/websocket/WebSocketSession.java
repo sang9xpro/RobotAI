@@ -62,6 +62,19 @@ public class WebSocketSession extends ChatSession {
     @Override
     public void sendTextMessage(String message) {
         try {
+            var transport = getDialogueContext().getConversationTransport();
+            if (transport.enabled()) {
+                var node = com.xiaozhi.utils.JsonUtil.OBJECT_MAPPER.readTree(message);
+                if (node instanceof com.fasterxml.jackson.databind.node.ObjectNode object
+                        && (java.util.Set.of("tts", "stt", "llm", "error", "turn_ignored").contains(node.path("type").asText())
+                        || "mcp".equals(node.path("type").asText()) && "tools/call".equals(node.path("payload").path("method").asText()))) {
+                    long capturedTurn=transport.capture();
+                    if (!transport.isCurrent(capturedTurn)) return;
+                    object.put("generation", transport.generation()).put("turn_id", Long.toString(capturedTurn));
+                    if ("stt".equals(node.path("type").asText())) object.put("state", "final").put("revision", 0);
+                    message = object.toString();
+                }
+            }
             session.sendMessage(new TextMessage(message));
         } catch (SessionLimitExceededException e) {
             handleSendLimitExceeded(e);
@@ -73,8 +86,9 @@ public class WebSocketSession extends ChatSession {
     @Override
     public void sendBinaryMessage(byte[] message, long timestamp) {
         try {
-            session.sendMessage(new BinaryMessage(
-                    BinaryProtocolCodec.encode(protocolVersion, message, timestamp)));
+            var transport = getDialogueContext().getConversationTransport();
+            byte[] encoded = transport.enabled() ? transport.encode(message) : BinaryProtocolCodec.encode(protocolVersion, message, timestamp);
+            if (encoded != null) session.sendMessage(new BinaryMessage(encoded));
         } catch (SessionLimitExceededException e) {
             handleSendLimitExceeded(e);
         } catch (Exception e) {

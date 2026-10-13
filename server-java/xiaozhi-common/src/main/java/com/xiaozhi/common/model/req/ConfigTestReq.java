@@ -52,6 +52,13 @@ public class ConfigTestReq {
     @Schema(description = "服务提供商的API地址")
     private String apiUrl;
 
+    @Schema(description = "Voice ID for TTS test")
+    private String voiceName;
+
+    @jakarta.validation.constraints.Size(max = 500)
+    @Schema(description = "Test content for LLM, Vision or TTS")
+    private String sampleText;
+
     @Schema(description = "状态(1启用 0禁用)")
     private String state;
 
@@ -60,4 +67,8 @@ public class ConfigTestReq {
 
     @Schema(description = "是否启用思考模式(模型支持时生效)")
     private Boolean enableThinking;
+    @jakarta.validation.constraints.Pattern(regexp = "none|minimal|low|medium|high|xhigh|max|ultra",
+            message = "Mức suy luận không hợp lệ")
+    @Schema(description = "Codex reasoning effort for the current test")
+    private String reasoningEffort;
 }

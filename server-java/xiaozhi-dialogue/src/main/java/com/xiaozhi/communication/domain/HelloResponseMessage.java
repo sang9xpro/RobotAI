@@ -13,5 +13,7 @@ public class HelloResponseMessage {
     private Integer version;
     private String transport;
     private String sessionId;
+    private Boolean ready;
     private AudioParams audioParams;
+    private com.fasterxml.jackson.databind.JsonNode robotai;
 }

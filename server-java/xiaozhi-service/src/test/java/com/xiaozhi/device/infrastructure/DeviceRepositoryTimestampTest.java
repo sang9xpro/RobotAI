@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,6 +51,9 @@ class DeviceRepositoryTimestampTest {
 
     @BeforeEach
     void setUp() {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), "test"), DeviceDO.class);
         repository = new DeviceRepositoryImpl();
         ReflectionTestUtils.setField(repository, "deviceMapper", deviceMapper);
         ReflectionTestUtils.setField(repository, "deviceConverter", new DeviceConverter());
@@ -67,7 +71,7 @@ class DeviceRepositoryTimestampTest {
 
     @Test
     void updateHitsOnFirstWriteAndNeverFallsBackToInsert() {
-        when(deviceMapper.updateById(any(DeviceDO.class))).thenAnswer(invocation -> {
+        when(deviceMapper.update(any(DeviceDO.class), any())).thenAnswer(invocation -> {
             DeviceDO updated = invocation.getArgument(0);
             // 更新语句不能带 createTime，否则会覆盖设备原有的创建时间
             assertThat(updated.getCreateTime()).isNull();
@@ -85,7 +89,7 @@ class DeviceRepositoryTimestampTest {
 
     @Test
     void insertRunsWhenUpdateMatchesNoRowAndWritesBackBothTimestamps() {
-        when(deviceMapper.updateById(any(DeviceDO.class))).thenReturn(0);
+        when(deviceMapper.update(any(DeviceDO.class), any())).thenReturn(0);
         when(deviceMapper.insert(any(DeviceDO.class))).thenAnswer(invocation -> {
             DeviceDO inserted = invocation.getArgument(0);
             inserted.setCreateTime(CREATED_AT);
@@ -103,7 +107,7 @@ class DeviceRepositoryTimestampTest {
     @Test
     void concurrentFirstRegistrationFallsBackToUpdateWithoutOverwritingCreateTime() {
         AtomicInteger updateCalls = new AtomicInteger();
-        when(deviceMapper.updateById(any(DeviceDO.class))).thenAnswer(invocation -> {
+        when(deviceMapper.update(any(DeviceDO.class), any())).thenAnswer(invocation -> {
             DeviceDO updated = invocation.getArgument(0);
             if (updateCalls.getAndIncrement() == 0) {
                 return 0;
@@ -125,5 +129,29 @@ class DeviceRepositoryTimestampTest {
 
         assertThat(updateCalls.get()).isEqualTo(2);
         assertThat(device.getUpdateTime()).isEqualTo(UPDATED_AT);
+    }
+
+    @Test
+    void staleDeviceSnapshotCannotUndoAnOwnershipTransfer() {
+        when(deviceMapper.update(any(DeviceDO.class), any())).thenReturn(0);
+        when(deviceMapper.insert(any(DeviceDO.class))).thenThrow(new DuplicateKeyException("existing transferred device"));
+        assertThatThrownBy(() -> repository.save(existingDevice())).isInstanceOf(IllegalStateException.class);
+        verify(eventPublisher, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void ownershipChangeRequiresThePreviousOwnerAndNeverInsertsOnConflict() {
+        when(deviceMapper.update(any(DeviceDO.class), any())).thenAnswer(invocation -> {
+            DeviceDO updated = invocation.getArgument(0);
+            com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DeviceDO> condition = invocation.getArgument(1);
+            assertThat(updated.getUserId()).isEqualTo(9);
+            condition.getSqlSegment();
+            assertThat(condition.getParamNameValuePairs().values()).contains(DEVICE_ID, 7);
+            return 0;
+        });
+        var device = existingDevice();
+        device.reassignUser(9, 12);
+        assertThatThrownBy(() -> repository.save(device)).isInstanceOf(IllegalStateException.class);
+        verify(deviceMapper, never()).insert(any(DeviceDO.class));
     }
 }

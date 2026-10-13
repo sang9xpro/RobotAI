@@ -38,6 +38,18 @@ const routes: RouteRecordRaw[] = [
     // redirect: '/dashboard', // 在路由守卫中动态处理
     children: [
       {
+        path: 'robot/profile', name: 'robot-profile', component: () => import('../views/RobotProfileView.vue'),
+        meta: { title: 'robotai.profile', icon: 'RobotOutlined', requiresAuth: true },
+      },
+      {
+        path: 'music', name: 'music', component: () => import('../views/MusicLibraryView.vue'),
+        meta: { title: 'robotai.music', icon: 'SoundOutlined', requiresAuth: true, permission: 'system:robot:music:list' },
+      },
+      {
+        path: 'system/status', name: 'system-status', component: () => import('../views/SystemStatusView.vue'),
+        meta: { title: 'robotai.system', icon: 'DashboardOutlined', requiresAuth: true, permission: 'system:robot:status' },
+      },
+      {
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('../views/DashboardView.vue'),
@@ -80,6 +92,10 @@ const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           permission: 'system:role',
         },
+      },
+      {
+        path: 'device-history', name: 'device-history', component: () => import('../views/DeviceHistoryView.vue'),
+        meta: { title: 'robotai.deviceHistory', icon: 'MessageOutlined', requiresAuth: true, permission: 'system:device-history' },
       },
       {
         path: 'template',

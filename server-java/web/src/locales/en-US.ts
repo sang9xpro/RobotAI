@@ -1,9 +1,13 @@
+import { robotaiEn } from './robotai'
+import { accessControlEn } from './accessControl'
 /**
  * English language pack
  */
 export default {
+  robotai: robotaiEn,
+  accessControl: accessControlEn,
   common: {
-    appTitle: 'Connect Ai - IoT Management Platform',
+    appTitle: 'RobotAI',
     confirm: 'Confirm',
     cancel: 'Cancel',
     save: 'Save',

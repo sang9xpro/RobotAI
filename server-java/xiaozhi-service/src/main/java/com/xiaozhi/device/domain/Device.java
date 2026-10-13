@@ -17,7 +17,7 @@ import java.util.Objects;
 public class Device {
 
     /** 领域信号：由 Repository.save() 转译为 Spring ApplicationEvent 发布 */
-    public enum DomainSignal { UPDATED, ROLE_CHANGED, SESSION_CLOSED }
+    public enum DomainSignal { UPDATED, ROLE_CHANGED, SESSION_CLOSED, OWNER_CHANGED }
 
     /** 持久化设备状态常量 */
     public static final String STATE_OFFLINE = "0";
@@ -30,6 +30,7 @@ public class Device {
     // --- Core state ---
     private String deviceName;
     private Integer userId;
+    private Integer previousUserId;
     private Integer roleId;
     private String mcpList;
 
@@ -92,6 +93,19 @@ public class Device {
         this.userId = userId;
         this.roleId = roleId;
         signals.add(DomainSignal.UPDATED);
+    }
+
+    /** Administrative owner change: never switch the existing connection into the new owner's persona. */
+    public void reassignUser(Integer newUserId, Integer newRoleId) {
+        if (newUserId == null || newRoleId == null) throw new IllegalArgumentException("User and role required");
+        if (Objects.equals(this.userId, newUserId)) return;
+        this.previousUserId = this.userId;
+        this.userId = newUserId;
+        this.roleId = newRoleId;
+        // Close the old persona before a new owner can reconnect with their role and memory.
+        signals.add(DomainSignal.SESSION_CLOSED);
+        signals.add(DomainSignal.UPDATED);
+        signals.add(DomainSignal.OWNER_CHANGED);
     }
 
     /** 切换关联角色 */

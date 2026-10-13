@@ -1,0 +1,224 @@
+openapi: 3.0.3
+info:
+  title: RobotAI Admin additions
+  version: 1.0.0
+  description: 'Additive contract. Existing Xiaozhi APIs remain compatible. IDs/revisions are opaque strings. API responses use code=200 for success; business errors can be HTTP 200 with a non-200 code.'
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+paths:
+  /config/test:
+    post:
+      operationId: testAiConfiguration
+      description: 'Requires system:config:api:list and config ownership/shared access. Uses current unsaved form; blank credentials retain saved values only for an owned config. Shared configs are probed using their saved endpoint/credentials. Runs inference only on explicit action. Additive data field preserves legacy code/message response.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigTestRequest' }
+      responses:
+        '200':
+          description: Probe result; a failed probe has non-200 business code
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigTestResponse' }
+        '403': { description: Missing permission }
+        '404': { description: Config absent or inaccessible }
+  /config/test/stt:
+    post:
+      operationId: testUploadedSpeech
+      description: 'Same permission/ownership as config/test. Audio must be RIFF PCM WAV, mono, 16000 Hz, signed 16-bit, at most 30 seconds (960000 PCM bytes); total file at most 1025536 bytes. OpenAI-compatible adapter returns final Vietnamese transcript; no partial-stream claim. Does not save configuration.'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [config, audio]
+              properties:
+                config: { $ref: '#/components/schemas/ConfigTestRequest' }
+                audio: { type: string, format: binary }
+            encoding:
+              config: { contentType: application/json }
+              audio: { contentType: audio/wav }
+      responses:
+        '200':
+          description: Final transcript or bounded safe provider error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigTestResponse' }
+        '400': { description: Invalid WAV or configuration }
+        '403': { description: Missing permission }
+        '404': { description: Config absent or inaccessible }
+  /config/test/tts:
+    post:
+      operationId: testSpeechSynthesis
+      description: 'Same permission/ownership as config/test. Uses current form plus voiceName/sampleText; does not save provider configuration. Preview is uploaded via the existing storage service and URL signing advice. No redirects when forwarding OpenAI-compatible provider credentials.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigTestRequest' }
+      responses:
+        '200':
+          description: Signed audio preview envelope or non-200 business error code
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: integer }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      audioUrl: { type: string, description: Signed relative storage path or absolute URL }
+        '400': { description: Invalid input }
+        '403': { description: Missing permission }
+        '404': { description: Config absent or inaccessible }
+  /robot/music/catalog:
+    get:
+      operationId: getMusicCatalog
+      description: Requires system:robot:music:list. Returns catalog entries plus unindexed local MP3s. No audio is downloaded from external URLs.
+      responses:
+        '200':
+          description: Catalog envelope
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogResponse' }
+    put:
+      operationId: saveMusicCatalog
+      description: Requires system:robot:music:update. Compare revision under a filesystem lock and write atomically. 409 on concurrent modification. Removing catalog metadata does not delete a file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Catalog' }
+      responses:
+        '200':
+          description: Updated catalog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogResponse' }
+        '409': { description: Revision conflict; reload before retrying }
+  /robot/music/files:
+    post:
+      operationId: uploadRobotMusic
+      description: Requires system:robot:music:update. MP3 only, max 30 MB, header verification, no overwrite or symlink traversal. Returns updated catalog; original uploads API is retained.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Updated catalog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogResponse' }
+  /robot/music/files/{fileName}:
+    delete:
+      operationId: deleteRobotMusic
+      description: Requires system:robot:music:update. Removes file and metadata only with current revision.
+      parameters:
+        - { name: fileName, in: path, required: true, schema: { type: string } }
+        - { name: revision, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Updated catalog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogResponse' }
+        '409': { description: Revision conflict }
+  /robot/system/status:
+    get:
+      operationId: getRobotSystemStatus
+      description: Requires system:robot:status. Passive checks only, fixed deployment-configured health URLs, no inference. Cached 10 seconds. Backend healthy does not establish Android, voice pipeline or motor readiness.
+      responses:
+        '200':
+          description: Status envelope
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message, data]
+                properties:
+                  code: { type: integer }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, state, checkedTime, detail]
+                      properties:
+                        id: { type: string }
+                        state: { type: string, enum: [healthy, degraded, unavailable, unknown] }
+                        checkedTime: { type: string, format: date-time }
+                        latencyMs: { type: integer, format: int64, nullable: true }
+                        detail: { type: string }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    ConfigTestRequest:
+      type: object
+      required: [configName, configType, provider]
+      properties:
+        configId: { type: integer, nullable: true, description: Saved configuration to resolve credentials/access; omit for a new draft }
+        configName: { type: string, minLength: 1, description: Model ID for OpenAI-compatible STT/TTS/LLM }
+        configType: { type: string, enum: [stt, tts, llm] }
+        provider: { type: string, minLength: 1 }
+        modelType: { type: string, nullable: true }
+        configDesc: { type: string, nullable: true }
+        apiUrl: { type: string, nullable: true, description: OpenAI-compatible base URL includes /v1 when required; default https://api.openai.com/v1 }
+        apiKey: { type: string, writeOnly: true, nullable: true }
+        apiSecret: { type: string, writeOnly: true, nullable: true }
+        appId: { type: string, nullable: true }
+        ak: { type: string, writeOnly: true, nullable: true }
+        sk: { type: string, writeOnly: true, nullable: true }
+        voiceName: { type: string, nullable: true, description: Provider voice ID, not a voice cloning operation }
+        sampleText: { type: string, maxLength: 500, nullable: true, description: TTS sample or LLM test question }
+        enableThinking: { type: boolean, nullable: true }
+        state: { type: string, enum: ['0', '1'], nullable: true }
+        isDefault: { type: string, enum: ['0', '1'], nullable: true }
+    ConfigTestResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        data:
+          type: object
+          required: [success, elapsedMillis, detail]
+          properties:
+            success: { type: boolean }
+            elapsedMillis: { type: integer, format: int64, minimum: 0 }
+            detail: { type: string, description: Transcript, model response or safe diagnostic; never credentials }
+    Track:
+      type: object
+      required: [id, title, artist]
+      properties:
+        id: { type: string, maxLength: 200 }
+        title: { type: string, minLength: 1, maxLength: 300 }
+        artist: { type: string, maxLength: 300 }
+        fileName: { type: string, nullable: true, description: 'Basename .mp3; mutually exclusive with url' }
+        url: { type: string, format: uri, nullable: true, maxLength: 4096, description: 'HTTP(S), no userinfo/fragment. YouTube URL is a link and cannot be previewed as direct audio.' }
+    Catalog:
+      type: object
+      required: [revision, tracks]
+      properties:
+        revision: { type: string, description: SHA-256 of catalog and local file inventory }
+        tracks: { type: array, maxItems: 2000, items: { $ref: '#/components/schemas/Track' } }
+    CatalogResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        data: { $ref: '#/components/schemas/Catalog' }

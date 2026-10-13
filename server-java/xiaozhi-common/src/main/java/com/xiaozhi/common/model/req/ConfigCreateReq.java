@@ -57,6 +57,10 @@ public class ConfigCreateReq {
 
     @Schema(description = "是否启用思考模式(模型支持时生效)")
     private Boolean enableThinking;
+    @jakarta.validation.constraints.Pattern(regexp = "none|minimal|low|medium|high|xhigh|max|ultra",
+            message = "Mức suy luận không hợp lệ")
+    @Schema(description = "Codex reasoning effort; must be supported by the selected model")
+    private String reasoningEffort;
     /** 模型上下文长度(token)，对话按它做压缩预算 */
     private Integer contextLength;
 }

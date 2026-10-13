@@ -34,6 +34,7 @@ export const configTypeMap: Record<string, ConfigTypeInfo> = {
       ],
       // OpenAI 系列
       'OpenAI': [
+        { name: 'apiUrl', label: 'API Base URL', required: false, inputType: 'text', span: 12, placeholder: 'https://api.openai.com/v1' },
         {
           name: 'apiKey',
           label: 'API Key',
@@ -952,6 +953,7 @@ export const configTypeMap: Record<string, ConfigTypeInfo> = {
     label: 'config.stt',
     permissionPrefix: 'system:config',
     typeOptions: [
+      { label: 'OpenAI compatible', value: 'openai', key: 'openai', configNameOptions: [] },
       { label: 'Tencent Cloud', value: 'tencent', key: '0' },
       {
         label: 'Aliyun (DashScope)',
@@ -980,6 +982,10 @@ export const configTypeMap: Record<string, ConfigTypeInfo> = {
       { label: 'VolcEngine (Doubao)', value: 'volcengine', key: '5' }
     ],
     typeFields: {
+      openai: [
+        { name: 'apiUrl', label: 'API Base URL', required: true, span: 12, placeholder: 'https://api.openai.com/v1' },
+        { name: 'apiKey', label: 'API Key', required: false, inputType: 'password', span: 12 }
+      ],
       tencent: [
         { 
           name: 'appId', 
@@ -1107,6 +1113,7 @@ export const configTypeMap: Record<string, ConfigTypeInfo> = {
     label: 'config.tts',
     permissionPrefix: 'system:config',
     typeOptions: [
+      { label: 'OpenAI compatible', value: 'openai', key: 'openai', configNameOptions: [] },
       { label: 'Tencent Cloud', value: 'tencent', key: '0' },
       { label: 'Aliyun (DashScope)', value: 'aliyun', key: '1' },
       { label: 'Aliyun (NLS)', value: 'aliyun-nls', key: '2' },
@@ -1116,6 +1123,10 @@ export const configTypeMap: Record<string, ConfigTypeInfo> = {
       { label: 'Sherpa-ONNX', value: 'sherpa-onnx', key: '6' }
     ],
     typeFields: {
+      openai: [
+        { name: 'apiUrl', label: 'API Base URL', required: true, span: 12, placeholder: 'https://api.openai.com/v1' },
+        { name: 'apiKey', label: 'API Key', required: false, inputType: 'password', span: 12 }
+      ],
       tencent: [
         {
           name: 'appId',

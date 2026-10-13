@@ -22,6 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Slf4j
 public final class SpeechTurn {
+    private volatile com.xiaozhi.common.model.bo.ListeningContext listeningContext;
+    public com.xiaozhi.common.model.bo.ListeningContext listeningContext() { return listeningContext; }
+    public void setListeningContext(com.xiaozhi.common.model.bo.ListeningContext context) { listeningContext = context; }
 
     private volatile com.xiaozhi.common.model.bo.SpeakerHint speaker = com.xiaozhi.common.model.bo.SpeakerHint.unknown();
     public com.xiaozhi.common.model.bo.SpeakerHint speaker() { return speaker; }

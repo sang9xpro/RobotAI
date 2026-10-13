@@ -18,6 +18,8 @@ export default {
     checkUser: '/user/checkUser',
   },
   authRole: '/auth-role',
+  adminUsers: '/admin/users',
+  deviceHistory: '/device-history',
   // 设备的发消息/暂停/继续/停止等动作都是 /device/{id}/xxx 子资源
   device: '/device',
   agent: '/agent',

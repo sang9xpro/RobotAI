@@ -23,7 +23,7 @@ public class ConfigConverter {
                 d.getAk(), d.getSk(), d.getApiUrl(),
                 d.getEnableThinking(), d.getContextLength(),
                 d.getState(), "1".equals(d.getIsDefault()),
-                d.getCreateTime(), d.getUpdateTime());
+                d.getCreateTime(), d.getUpdateTime(), d.getReasoningEffort());
     }
 
     /** 聚合根 → DO（持久化） */
@@ -45,6 +45,7 @@ public class ConfigConverter {
         d.setState(StringUtils.hasText(c.getState()) ? c.getState() : AiConfig.STATE_ENABLED);
         d.setIsDefault(c.isDefault() ? "1" : "0");
         d.setEnableThinking(c.getEnableThinking());
+        d.setReasoningEffort(c.getReasoningEffort());
         d.setContextLength(c.getContextLength());
         return d;
     }
@@ -69,6 +70,7 @@ public class ConfigConverter {
         bo.setState(c.getState());
         bo.setIsDefault(c.isDefault() ? "1" : "0");
         bo.setEnableThinking(c.getEnableThinking());
+        bo.setReasoningEffort(c.getReasoningEffort());
         bo.setContextLength(c.getContextLength());
         bo.setCreateTime(c.getCreateTime());
         bo.setUpdateTime(c.getUpdateTime());

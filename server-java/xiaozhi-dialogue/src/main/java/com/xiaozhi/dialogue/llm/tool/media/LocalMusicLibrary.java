@@ -10,10 +10,8 @@ import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
 import java.util.ArrayList;
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /** Resolve titles/artists to external audio URLs or protected HTTP URLs for local MP3s. */
 @Service
@@ -27,27 +25,21 @@ public class LocalMusicLibrary {
         Path root = paths.resolveMusicDir();
         if (!Files.exists(root)) return List.of();
         List<Track> tracks = new ArrayList<>();
-        Path catalog = root.resolve("catalog.json");
-        if (Files.isRegularFile(catalog, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.size(catalog) > 1_000_000) throw new IOException("Music catalog too large");
-            var data = new ObjectMapper().readTree(Files.readString(catalog));
-            if (!data.isArray() || data.size() > 2000) throw new IOException("Invalid music catalog");
-            for (var row : data) {
-                String title = row.path("title").asText("").strip();
-                String artist = row.path("artist").asText("").strip();
-                String url = row.path("url").asText("");
-                try {
-                    URI uri = URI.create(url);
-                    if (title.isBlank() || title.length() > 300 || artist.length() > 300 || url.length() > 4096
-                            || !java.util.Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null
-                            || uri.getUserInfo() != null || uri.getFragment() != null) continue;
-                    tracks.add(new Track(title, title, null, url, artist));
-                } catch (IllegalArgumentException ignored) { /* Skip invalid entries. */ }
-            }
+        var catalog = com.xiaozhi.common.util.MusicCatalogFile.read(root);
+        var indexed = new java.util.HashSet<String>();
+        for (var row : catalog) {
+            if (row.fileName() != null) {
+                Path file = root.resolve(row.fileName());
+                if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) continue;
+                indexed.add(row.fileName());
+                tracks.add(new Track(row.title(), row.fileName(), file,
+                        "/api/robot/music/audio?name=" + URLEncoder.encode(row.fileName(), StandardCharsets.UTF_8), row.artist()));
+            } else tracks.add(new Track(row.title(), row.title(), null, row.url(), row.artist()));
         }
         try (var files = Files.list(root)) {
             tracks.addAll(files.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS))
                     .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".mp3"))
+                    .filter(p -> !indexed.contains(p.getFileName().toString()))
                     .map(p -> {
                         String name = p.getFileName().toString();
                         return new Track(name.substring(0, name.length() - 4), name, p,

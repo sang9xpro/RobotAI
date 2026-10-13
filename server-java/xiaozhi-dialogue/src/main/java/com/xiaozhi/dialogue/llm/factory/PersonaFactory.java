@@ -41,6 +41,8 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class PersonaFactory {
     @Resource
+    private com.xiaozhi.message.service.ConversationService conversationService;
+    @Resource
     private MessageService chatMessageService;
     @Resource
     private ConfigService configService;
@@ -83,7 +85,7 @@ public class PersonaFactory {
         Assert.notNull(device, "device cannot be null");
         Assert.notNull(role, "role cannot be null");
 
-        session.setInactiveTimeoutSeconds(role.getInactiveTimeoutSeconds() != null
+        session.setInactiveTimeoutSeconds(isAuthenticatedApp(device) ? 0 : role.getInactiveTimeoutSeconds() != null
                 ? role.getInactiveTimeoutSeconds() : 60);
 
         // 幂等保护：Persona 已存在则跳过重建
@@ -114,6 +116,9 @@ public class PersonaFactory {
 
         // 获取ChatModel
         ChatModel chatModel = chatModelFactory.getChatModel(role);
+        if (chatModel instanceof com.xiaozhi.ai.llm.factory.ConversationChatModel scoped) {
+            chatModel = scoped.bind("user:" + userId + ":device:" + ownerId);
+        }
 
         Persona persona = Persona.builder()
                 .sessionManager(sessionManager)
@@ -133,6 +138,16 @@ public class PersonaFactory {
     /**
      * 重载：仅传 session，自动从 session 获取 device，从 DB/缓存获取 role。
      */
+    public void beginIndividualConversation(ChatSession session) {
+        replaceIndividualConversation(session, java.util.UUID.randomUUID().toString());
+    }
+    public void replaceIndividualConversation(ChatSession session, String scopeId) {
+        var device = session.getDevice();
+        if (device == null || device.getRoleId() == null || session.getPersona() == null) return;
+        var role = roleService.getBO(device.getRoleId());
+        conversationService.create(scopeId, device.getUserId(), device.getRoleId(), "Ken · hội thoại riêng");
+        session.getPersona().replaceConversation(conversationFactory.initSessionConversation(device.getDeviceId(), device.getUserId(), role, scopeId));
+    }
     public Persona buildPersona(ChatSession session) {
         if (session.getPersona() != null) {
             return session.getPersona();
@@ -140,6 +155,11 @@ public class PersonaFactory {
         DeviceBO device = session.getDevice();
         RoleBO role = roleService.getBO(device.getRoleId());
         return buildPersona(session, device, role);
+    }
+
+    public static boolean isAuthenticatedApp(DeviceBO device) {
+        return device != null && device.getUserId() != null
+                && ("user_chat_" + device.getUserId()).equals(device.getDeviceId());
     }
 
     /**
@@ -156,8 +176,7 @@ public class PersonaFactory {
             if (role != null && configId.equals(role.getModelId())) {
                 Persona persona = session.getPersona();
                 if (persona != null) {
-                    persona.getConversation().clear();
-                    session.setPersona(null);
+                    sessionManager.closeSession(session);
                     count++;
                 }
             }

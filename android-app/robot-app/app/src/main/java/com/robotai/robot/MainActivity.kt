@@ -9,8 +9,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,9 +17,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -80,6 +75,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RobotScreen(vm: RobotViewModel, session: UserSession? = null, configured: Boolean = true) {
+    val state by vm.state.collectAsState()
+    com.robotai.robot.motion.KenMotionHostIfNeeded(com.robotai.domain.KenMotionInput(phase = state.phase), vm.speechLevel) {
+        RobotScreenContent(vm, session, configured)
+    }
+}
+
+@Composable
+private fun RobotScreenContent(vm: RobotViewModel, session: UserSession?, configured: Boolean) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(if (session == null) "robot-test" else
@@ -157,26 +160,5 @@ private fun HorizontalDividerCompat() { Divider(Modifier.padding(vertical = 16.d
 
 @Composable
 fun RobotEyes(phase: Phase, modifier: Modifier = Modifier) {
-    if (phase == Phase.SLEEPING) {
-        Canvas(modifier) {
-            for (x in listOf(size.width * .17f, size.width * .60f)) {
-                drawRoundRect(Color(0xff224044), Offset(x, size.height / 2), Size(size.width * .23f, 3.dp.toPx()), CornerRadius(4.dp.toPx()))
-            }
-        }
-        return
-    }
-    val transition = rememberInfiniteTransition(label = "eyes")
-    val blink by transition.animateFloat(1f, .08f,
-        infiniteRepeatable(keyframes { durationMillis = 4200; 1f at 0; 1f at 3700; .08f at 3850; 1f at 4000 }, RepeatMode.Restart), label = "blink")
-    val pulse by transition.animateFloat(.92f, 1f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "pulse")
-    Canvas(modifier) {
-        val color = when (phase) { Phase.ERROR -> Color(0xffff8b7e); Phase.THINKING, Phase.FINALIZING -> Color(0xffb294ff); else -> Color(0xff34d4de) }
-        val width = size.width * .23f
-        val height = size.height * .48f * blink * if (phase == Phase.SPEAKING) pulse else 1f
-        val shift = if (phase == Phase.THINKING) size.width * .04f else 0f
-        for (x in listOf(size.width * .17f, size.width * .60f)) {
-            drawRoundRect(color, Offset(x + shift, (size.height - height) / 2), Size(width, height), CornerRadius(width * .32f))
-        }
-        if (phase == Phase.LISTENING) drawCircle(Color(0xff74f3b1), 5.dp.toPx(), Offset(size.width / 2, size.height * .85f))
-    }
+    com.robotai.robot.motion.KenFace(com.robotai.domain.KenMotionInput(phase = phase), modifier)
 }

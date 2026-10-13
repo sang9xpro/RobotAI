@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/idler_wheel.stl",
+  "scale": {
+    "bbox_diagonal_mm": 60.9754,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 536.77,
+        "support_area_pct": 7.9,
+        "build_height_mm": 26.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 536.77,
+        "support_area_pct": 7.9,
+        "build_height_mm": 26.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 860.63,
+        "support_area_pct": 12.6,
+        "build_height_mm": 39.0
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 860.63,
+        "support_area_pct": 12.6,
+        "build_height_mm": 39.0
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 860.63,
+        "support_area_pct": 12.6,
+        "build_height_mm": 39.0
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 860.63,
+        "support_area_pct": 12.6,
+        "build_height_mm": 39.0
+      }
+    ]
+  },
+  "partial": false
+}

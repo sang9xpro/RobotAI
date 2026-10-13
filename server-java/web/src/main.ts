@@ -4,6 +4,7 @@ import 'ant-design-vue/dist/reset.css'
 import 'nprogress/nprogress.css'
 // dayjs 中文语言包，日期选择器的星期行与月份名需要它；en 是 dayjs 内置默认语言
 import 'dayjs/locale/zh-cn'
+import 'dayjs/locale/vi'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

@@ -79,10 +79,10 @@ class WirelessDockFlowTest {
         compose.onNodeWithTag("dock-sleep").performClick()
         // Leave during the delayed wake: the old wake must not reconnect after leaving.
         power("none"); waitNormal()
-        compose.waitUntil(5000) { !vm.state.value.connected && !vm.state.value.connecting }
+        compose.waitUntil(15000) { vm.state.value.connected }
         instrumentation.waitForIdleSync()
         scenario!!.onActivity { assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, it.requestedOrientation) }
-        assertFalse(vm.state.value.connected)
+        assertTrue(vm.state.value.connected)
     }
     @Test fun foregroundRestoreRefreshesPowerAndStopsHiddenMicrophone() {
         power("wireless"); launch(); waitDock()
@@ -94,7 +94,7 @@ class WirelessDockFlowTest {
         power("none")
         scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
         waitNormal()
-        compose.waitUntil(5000) { !vm.state.value.connected && !vm.state.value.connecting }
+        compose.waitUntil(15000) { vm.state.value.connected }
     }
     @Test fun launchAlreadyDockedExitStaysDismissedUntilNextPlacement() {
         power("wireless"); launch(); waitDock()

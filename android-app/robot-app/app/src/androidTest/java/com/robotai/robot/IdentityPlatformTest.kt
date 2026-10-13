@@ -220,7 +220,7 @@ class IdentityPlatformTest {
         val i=InstrumentationRegistry.getInstrumentation();val ctx=i.targetContext
         val controller=IdentityController(ctx,"test-microphone-"+UUID.randomUUID())
         val scope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Default)
-        val mic=com.robotai.robot.data.Microphone(scope)
+        val mic=com.robotai.robot.data.Microphone(scope,ctx.assets)
         val count=java.util.concurrent.atomic.AtomicInteger()
         val peak=java.util.concurrent.atomic.AtomicInteger()
         val error=java.util.concurrent.atomic.AtomicReference<String?>()

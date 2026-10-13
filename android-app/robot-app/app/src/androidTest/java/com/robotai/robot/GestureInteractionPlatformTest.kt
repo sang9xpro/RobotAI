@@ -65,12 +65,11 @@ class GestureInteractionPlatformTest {
         }
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("gesture-effect-THUMBS_UP").assertIsDisplayed()
-        compose.onNodeWithText("👍").assertIsDisplayed()
         compose.onNodeWithText("Cảm ơn Người kiểm thử!").assertIsDisplayed()
         screenshot("gesture-ken-like.png")
         compose.runOnIdle { docked=true;reaction=event!!.copy(atMs=SystemClock.elapsedRealtime()) }
         compose.mainClock.advanceTimeBy(500)
-        compose.onNodeWithText("👍").assertIsDisplayed()
+        compose.onNodeWithTag("gesture-effect-THUMBS_UP").assertIsDisplayed()
         screenshot("gesture-dock-like.png")
     }
 

@@ -16,6 +16,16 @@ import static org.mockito.Mockito.when;
  * 否则重连后的会话一直用默认超时，角色配的断连时间不生效。
  */
 class PersonaFactoryInactiveTimeoutTest {
+    @Test
+    void authenticatedAppKeepsSessionUntilDisconnect() {
+        var factory = new PersonaFactory();
+        var session = mock(ChatSession.class);
+        when(session.getPersona()).thenReturn(mock(Persona.class));
+        var device = new DeviceBO(); device.setDeviceId("user_chat_7"); device.setUserId(7);
+        var role = new RoleBO(); role.setInactiveTimeoutSeconds(45);
+        factory.buildPersona(session, device, role);
+        verify(session).setInactiveTimeoutSeconds(0);
+    }
 
     @Test
     void initializesSessionTimeoutBeforeReturningExistingPersona() {

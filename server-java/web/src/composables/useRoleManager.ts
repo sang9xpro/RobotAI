@@ -19,13 +19,14 @@ import type { PageResponse } from '@/types/api'
  * 没有 json 的表示音色由接口动态返回（sherpa-onnx）
  */
 const VOICE_PROVIDERS: Record<VoiceProvider, { json?: string; label: string; color: string }> = {
-  edge: { json: '/static/assets/edgeVoicesList.json', label: '微软Edge', color: 'green' },
-  aliyun: { json: '/static/assets/aliyunVoicesList.json', label: '阿里云', color: 'orange' },
-  'aliyun-nls': { json: '/static/assets/aliyunNlsVoicesList.json', label: '阿里云NLS', color: 'orange' },
-  volcengine: { json: '/static/assets/volcengineVoicesList.json', label: '火山引擎', color: 'blue' },
-  xfyun: { json: '/static/assets/xfyunVoicesList.json', label: '讯飞云', color: 'cyan' },
+  openai: { label: 'OpenAI compatible', color: 'cyan' },
+  edge: { json: '/static/assets/edgeVoicesList.json', label: 'Microsoft Edge', color: 'green' },
+  aliyun: { json: '/static/assets/aliyunVoicesList.json', label: 'Aliyun', color: 'orange' },
+  'aliyun-nls': { json: '/static/assets/aliyunNlsVoicesList.json', label: 'Aliyun NLS', color: 'orange' },
+  volcengine: { json: '/static/assets/volcengineVoicesList.json', label: 'VolcEngine', color: 'blue' },
+  xfyun: { json: '/static/assets/xfyunVoicesList.json', label: 'iFlytek', color: 'cyan' },
   minimax: { json: '/static/assets/minimaxVoicesList.json', label: 'Minimax', color: 'red' },
-  tencent: { json: '/static/assets/tencentVoicesList.json', label: '腾讯云', color: 'green' },
+  tencent: { json: '/static/assets/tencentVoicesList.json', label: 'Tencent Cloud', color: 'green' },
   'sherpa-onnx': { label: 'Sherpa-ONNX', color: 'purple' },
 }
 
@@ -48,7 +49,7 @@ interface EdgeVoice {
 /** 把 edge 原始清单裁成中文音色 */
 function parseEdgeVoices(data: EdgeVoice[]): VoiceOption[] {
   return data
-    .filter((voice) => voice.Locale && voice.Locale.includes('zh'))
+    .filter((voice) => voice.Locale && (voice.Locale.startsWith('vi') || voice.Locale.startsWith('zh')))
     .sort((a, b) => a.Locale.localeCompare(b.Locale))
     .map((voice) => {
       const nameParts = voice.ShortName.split('-')
@@ -126,6 +127,7 @@ export function useRoleManager() {
 
   // 语音相关 - 所有语音列表（来自各个JSON文件）
   const allVoices = ref<VoiceOption[]>([])
+  const ttsConfigurations = ref<Config[]>([])
 
   // 语音识别
   const sttOptions = ref<SttOption[]>([])
@@ -207,6 +209,7 @@ export function useRoleManager() {
       // 而请求本身挂了（throw）要中断并保留上一次的清单，execute 会把这两条路都变成返回 undefined
       const ttsRes = await queryConfigs({ configType: 'tts', pageNo: 1, pageSize: 1000 })
       const ttsConfigs: Config[] = ttsRes.code === 200 ? (ttsRes.data?.list ?? []) : []
+      ttsConfigurations.value = ttsConfigs.filter(c => c.state !== '0')
       const configOf = (provider: string) => ttsConfigs.find(c => c.provider === provider)
 
       // 2. 并行加载需要的语音JSON文件和 sherpa-onnx 动态音色
@@ -224,24 +227,28 @@ export function useRoleManager() {
 
       jsonVoices.forEach(({ provider, list }) => {
         // 上面按有没有 TTS 配置筛过，非 edge 的 provider 这里一定取得到
-        const ttsId = provider === 'edge' ? EDGE_TTS_ID : configOf(provider)!.configId
-        list.forEach(voice => voices.push({ ...voice, ttsId }))
+        const configs = provider === 'edge' ? [{ configId: EDGE_TTS_ID }] : ttsConfigurations.value.filter(c => c.provider === provider)
+        configs.forEach(config => list.forEach(voice => voices.push({ ...voice, ttsId: Number(config.configId) })))
       })
 
       // sherpa-onnx 动态音色
       if (sherpaConfig) {
         const items = (sherpaRes as { data?: Record<string, string>[] }).data ?? []
-        items.forEach((item: Record<string, string>) => {
+        ttsConfigurations.value.filter(c => c.provider === 'sherpa-onnx').forEach(config => items.forEach((item: Record<string, string>) => {
           voices.push({
             label: item.label,
             value: item.value,
             gender: (item.gender as 'male' | 'female' | '') || '',
             provider: 'sherpa-onnx',
             model: item.model,
-            ttsId: sherpaConfig.configId
+            ttsId: Number(config.configId)
           })
-        })
+        }))
       }
+      ttsConfigurations.value.filter(c => c.provider === 'openai').forEach(config => {
+        ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'].forEach(voice =>
+          voices.push({ label: voice, value: voice, gender: '', provider: 'openai', ttsId: Number(config.configId) }))
+      })
 
       allVoices.value = voices
     } catch (error) {
@@ -353,6 +360,7 @@ export function useRoleManager() {
     // 数据
     allModels,
     allVoices,
+    ttsConfigurations,
     sttOptions,
     localSttLabel,
     localSttAvailable,

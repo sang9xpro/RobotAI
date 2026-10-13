@@ -42,6 +42,10 @@ class FakeWebSocket {
     this.onopen?.()
   }
 
+  emitReady() {
+    this.onmessage?.({ data: JSON.stringify({ type: 'hello', session_id: 'session-1', ready: true }) })
+  }
+
   emitError() {
     this.onerror?.()
   }
@@ -81,6 +85,9 @@ describe('connectToServer 的成败判定', () => {
     const pending = ws.connectToServer(config)
 
     FakeWebSocket.last.emitOpen()
+    expect(ws.getConnectionStatus().isConnected).toBe(false)
+    expect(FakeWebSocket.last.send).toHaveBeenCalledWith(expect.stringContaining('hello'))
+    FakeWebSocket.last.emitReady()
     await vi.advanceTimersByTimeAsync(200)
 
     await expect(pending).resolves.toBe(true)
@@ -103,7 +110,7 @@ describe('connectToServer 的成败判定', () => {
     const ws = await loadModule()
     const pending = ws.connectToServer(config)
 
-    await vi.advanceTimersByTimeAsync(5200)
+    await vi.advanceTimersByTimeAsync(100200)
 
     await expect(pending).resolves.toBe(false)
   })
@@ -128,7 +135,7 @@ describe('connectToServer 的成败判定', () => {
     // 倒计时秒数要一并交出去，视图层的「N 秒后重连」靠它插值
     expect(ws.getConnectionStatus().reconnectSeconds).toBe(2)
 
-    await vi.advanceTimersByTimeAsync(5200)
+    await vi.advanceTimersByTimeAsync(100200)
     await expect(pending).resolves.toBe(false)
   })
 })
@@ -144,7 +151,7 @@ describe('stopAutoReconnect 的状态更新', () => {
     expect(ws.stopAutoReconnect()).toBe(true)
     expect(ws.getConnectionStatus().connectionStatus).toBe('reconnectStopped')
 
-    await vi.advanceTimersByTimeAsync(5200)
+    await vi.advanceTimersByTimeAsync(100200)
     await pending
   })
 
@@ -152,6 +159,7 @@ describe('stopAutoReconnect 的状态更新', () => {
     const ws = await loadModule()
     const pending = ws.connectToServer(config)
     FakeWebSocket.last.emitOpen()
+    FakeWebSocket.last.emitReady()
     await vi.advanceTimersByTimeAsync(200)
     await pending
 
@@ -175,7 +183,7 @@ describe('状态码不掺文案', () => {
 
     const pending = ws.connectToServer(config)
     FakeWebSocket.last.emitClose(false)
-    await vi.advanceTimersByTimeAsync(5200)
+    await vi.advanceTimersByTimeAsync(100200)
     await pending
 
     expect(seen.size).toBeGreaterThan(0)

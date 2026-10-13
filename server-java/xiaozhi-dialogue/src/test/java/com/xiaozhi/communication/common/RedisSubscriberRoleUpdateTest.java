@@ -38,6 +38,8 @@ class RedisSubscriberRoleUpdateTest {
     @Mock
     private VadService vadService;
 
+    @Mock private com.xiaozhi.device.service.DeviceService deviceService;
+
     private RedisSubscriber subscriber;
 
     @BeforeEach
@@ -46,6 +48,7 @@ class RedisSubscriberRoleUpdateTest {
         ReflectionTestUtils.setField(subscriber, "sessionManager", sessionManager);
         ReflectionTestUtils.setField(subscriber, "roleService", roleService);
         ReflectionTestUtils.setField(subscriber, "vadService", vadService);
+        ReflectionTestUtils.setField(subscriber, "deviceService", deviceService);
     }
 
     @Test
@@ -115,5 +118,32 @@ class RedisSubscriberRoleUpdateTest {
         role.setRoleId(7);
         role.setInactiveTimeoutSeconds(inactiveTimeoutSeconds);
         return role;
+    }
+
+    @Test
+    void ownerUpdateClosesTheOldSessionWithoutChangingItsOwnerSnapshot() {
+        ChatSession session = mock(ChatSession.class);
+        DeviceBO oldDevice = new DeviceBO(); oldDevice.setUserId(7);
+        DeviceBO transferred = new DeviceBO(); transferred.setUserId(9);
+        when(session.getDevice()).thenReturn(oldDevice);
+        when(sessionManager.getSessionByDeviceId("robot")).thenReturn(session);
+        when(deviceService.getBO("robot")).thenReturn(transferred);
+        subscriber.onDeviceUpdated("robot");
+        verify(sessionManager).closeSession(session);
+        verify(session, never()).setDevice(any());
+    }
+
+    @Test
+    void metadataUpdateForTheSameOwnerRefreshesTheSessionNormally() {
+        ChatSession session = mock(ChatSession.class);
+        DeviceBO original = new DeviceBO(); original.setUserId(7);
+        DeviceBO updated = new DeviceBO(); updated.setUserId(7);
+        when(session.getDevice()).thenReturn(original);
+        when(session.getSessionId()).thenReturn("s-1");
+        when(sessionManager.getSessionByDeviceId("robot")).thenReturn(session);
+        when(deviceService.getBO("robot")).thenReturn(updated);
+        subscriber.onDeviceUpdated("robot");
+        verify(session).setDevice(updated);
+        verify(sessionManager, never()).closeSession(any(ChatSession.class));
     }
 }

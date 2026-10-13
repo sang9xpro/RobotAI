@@ -5,6 +5,9 @@ import com.xiaozhi.common.port.ProviderTokenClient;
 import com.xiaozhi.utils.AudioUtils;
 import com.xiaozhi.ai.tts.providers.*;
 import com.xiaozhi.common.model.bo.ConfigBO;
+import com.xiaozhi.event.AiConfigChangedEvent;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -98,6 +101,7 @@ public class TtsServiceFactory {
         ensureOutputPath(outputPath);
 
         TtsService ttsService = switch (config.getProvider()) {
+            case "openai" -> new OpenAiTtsService(config, voiceName, pitch, speed, outputPath);
             case "aliyun" -> new AliyunTtsService(config, voiceName, pitch, speed, outputPath);
             case "aliyun-nls" -> {
                 yield new AliyunNlsTtsService(config, voiceName, pitch, speed, outputPath, tokenClient);
@@ -114,7 +118,9 @@ public class TtsServiceFactory {
                     outputPath,
                     runtimePathConfig.resolveTtsModelsDir().toString()
             );
-            default -> new EdgeTtsService(voiceName, pitch, speed, outputPath);
+            case "edge" -> new EdgeTtsService(voiceName, pitch, speed, outputPath);
+            case null -> new EdgeTtsService(voiceName, pitch, speed, outputPath);
+            default -> throw new IllegalArgumentException("Unsupported TTS provider");
         };
         return ttsService;
     }
@@ -135,26 +141,20 @@ public class TtsServiceFactory {
             return;
         }
 
-        String provider = config.getProvider();
         Integer configId = config.getConfigId();
-
-        // 如果是阿里云NLS，需要额外清理NlsClient缓存
-        if ("aliyun-nls".equals(provider)) {
-            AliyunNlsTtsService.clearClientCache(configId);
+        AliyunNlsTtsService.clearClientCache(configId);
+        // Provider may have changed; invalidate every instance for this configuration.
+        synchronized (serviceCache) {
+            serviceCache.keySet().removeIf(key -> {
+                String[] parts = key.split(":");
+                return parts.length >= 5 && parts[1].equals(String.valueOf(configId));
+            });
         }
+    }
 
-        // 遍历缓存的所有键，找到匹配的键并移除
-        serviceCache.keySet().removeIf(key -> {
-            String[] parts = key.split(":");
-            if (parts.length < 5) {  // 新格式是 provider:configId:voiceName:pitch:speed
-                return false;
-            }
-            String keyProvider = parts[0];
-            String keyConfigId = parts[1];
-
-            // 检查provider和configId是否匹配
-            return keyProvider.equals(provider) && keyConfigId.equals(String.valueOf(configId));
-        });
-
+    /** HTTP previews also need invalidation locally; dialogue receives the existing Redis broadcast. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onAiConfigChanged(AiConfigChangedEvent event) {
+        if ("tts".equals(event.getConfigType())) removeCache(new ConfigBO().setConfigId(event.getConfigId()));
     }
 }

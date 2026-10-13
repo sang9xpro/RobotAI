@@ -1,6 +1,7 @@
 package com.xiaozhi.device.infrastructure;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.xiaozhi.common.CacheHelper;
 import com.xiaozhi.common.config.CacheNames;
 import com.xiaozhi.common.model.bo.DeviceBO;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -61,6 +63,14 @@ public class DeviceRepositoryImpl implements DeviceRepository {
 
     @Resource
     private CacheHelper cacheHelper;
+
+    @Override
+    public List<Device> lockByIds(List<String> deviceIds) {
+        if (deviceIds == null || deviceIds.isEmpty()) return List.of();
+        return deviceMapper.selectList(new LambdaQueryWrapper<DeviceDO>()
+                .in(DeviceDO::getDeviceId, deviceIds).orderByAsc(DeviceDO::getDeviceId).last("FOR UPDATE"))
+                .stream().map(deviceConverter::toDomain).toList();
+    }
 
     @Override
     public Optional<Device> findById(String deviceId) {
@@ -109,18 +119,27 @@ public class DeviceRepositoryImpl implements DeviceRepository {
     @Transactional
     public void save(Device device) {
         DeviceDO dataObject = deviceConverter.toDataObject(device);
+        var signals = device.pullSignals();
+        boolean ownerChanged = signals.contains(Device.DomainSignal.OWNER_CHANGED);
+        Integer expectedOwner = ownerChanged ? device.getPreviousUserId() : device.getUserId();
+        var matchingOwner = new LambdaUpdateWrapper<DeviceDO>().eq(DeviceDO::getDeviceId, device.getDeviceId());
+        if (expectedOwner == null) matchingOwner.isNull(DeviceDO::getUserId);
+        else matchingOwner.eq(DeviceDO::getUserId, expectedOwner);
         // 设备注册一台只发生一次，之后的上下线上报、改角色、同步都走这里，更新才是常态，
         // 所以先更新：命中就一次写完，匹配不到行才说明是新设备。
         // 反过来先插入的话，每次更新都要先撞一次主键冲突，多一次往返，
         // 且失败的 insert 会先拿到该行共享锁、紧接着的 update 再升级成排他锁，并发同一设备时容易死锁。
-        if (deviceMapper.updateById(dataObject) == 0) {
+        if (deviceMapper.update(dataObject, matchingOwner) == 0) {
+            if (ownerChanged) throw new IllegalStateException("Chủ sở hữu robot đã thay đổi; hãy tải lại danh sách");
             try {
                 deviceMapper.insert(dataObject);
             } catch (DuplicateKeyException e) {
                 // 并发首次注册，另一条已经插进去了。insert 的自动填充刚把 createTime 写成本次时间，
                 // 清空后 updateById 才会按 NOT_NULL 策略跳过该列，不覆盖设备原有的创建时间
                 dataObject.setCreateTime(null);
-                deviceMapper.updateById(dataObject);
+                if (deviceMapper.update(dataObject, matchingOwner) == 0) {
+                    throw new IllegalStateException("Robot đã được chuyển cho người dùng khác");
+                }
             }
         }
         // 自动填充把本次写入的时间戳塞回了 DO，回填给聚合根，写接口出参不用再查一遍设备表
@@ -128,11 +147,12 @@ public class DeviceRepositoryImpl implements DeviceRepository {
         evictCache(device.getDeviceId());
 
         DeviceBO bo = deviceConverter.toBO(device);
-        device.pullSignals().forEach(signal -> {
+        signals.forEach(signal -> {
             switch (signal) {
                 case UPDATED -> eventPublisher.publishEvent(new DeviceUpdatedEvent(this, bo));
                 case ROLE_CHANGED -> eventPublisher.publishEvent(new DeviceRoleChangedEvent(this, device.getDeviceId()));
                 case SESSION_CLOSED -> eventPublisher.publishEvent(new DeviceSessionClosedEvent(this, device.getDeviceId()));
+                case OWNER_CHANGED -> { } // UPDATED + SESSION_CLOSED already notify both processes.
             }
         });
     }

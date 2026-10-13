@@ -13,8 +13,8 @@ export interface WebSocketConfig {
 }
 
 export interface WebSocketMessage {
-  type: 'stt' | 'tts' | 'llm' | 'iot' | 'listen' | 'audio' | 'system'
-  state?: 'start' | 'stop' | 'text' | 'sentence_start'
+  type: 'stt' | 'tts' | 'llm' | 'iot' | 'listen' | 'audio' | 'system' | 'hello' | 'session'
+  state?: 'start' | 'stop' | 'text' | 'sentence_start' | 'preparing' | 'ready' | 'failed'
   text?: string
   /** type=llm 时的情绪标签（neutral/happy/sad ...） */
   emotion?: string
@@ -92,7 +92,7 @@ const maxReconnectAttempts = 5
 const reconnectDelay = 2000
 
 // 建连等待上限
-const CONNECT_TIMEOUT = 5000
+const CONNECT_TIMEOUT = 100000
 
 // 心跳：服务端 websocket.max-session-idle-timeout 默认 60 秒，网页端不发音频时会被判空闲踢下线
 let heartbeatTimer: number | null = null
@@ -327,7 +327,7 @@ function notifyStatusChange(): void {
 export async function connectToServer(config: WebSocketConfig): Promise<boolean> {
   if (webSocket && webSocket.readyState === WebSocket.OPEN) {
     log('WebSocket已连接', 'info')
-    return true
+    return connectionStatus.isConnected
   }
 
   if (isConnecting) {
@@ -383,30 +383,38 @@ export async function connectToServer(config: WebSocketConfig): Promise<boolean>
     // 创建WebSocket连接
     webSocket = new WebSocket(url)
     webSocket.binaryType = 'arraybuffer'
+    const socket = webSocket
 
     // 连接打开事件
     webSocket.onopen = () => {
-      isConnecting = false
-      connectionStatus.isConnected = true
-      connectionStatus.connectionStatus = 'connected'
+      if (webSocket !== socket) return
+      connectionStatus.isConnected = false
+      connectionStatus.connectionStatus = 'connecting'
       connectionStatus.connectionTime = new Date()
       reconnectAttempts = 0
       startHeartbeat()
-      log('WebSocket连接已建立', 'success')
+      webSocket?.send(JSON.stringify({ type: 'hello', version: 1, transport: 'websocket', audio_params: { format: 'opus', sample_rate: 16000, channels: 1, frame_duration: 60 } }))
+      log('WebSocket opened; preparing model connection', 'info')
       notifyStatusChange()
     }
 
     // 接收消息事件
     webSocket.onmessage = (event) => {
+      if (webSocket !== socket) return
       handleWebSocketMessage(event)
     }
 
     // 连接关闭事件
     webSocket.onclose = (event) => {
+      if (webSocket !== socket) return
       isConnecting = false
       connectionStatus.isConnected = false
       stopHeartbeat()
 
+      if (connectionStatus.connectionStatus === 'failed') {
+        notifyStatusChange()
+        return
+      }
       if (event.wasClean) {
         connectionStatus.connectionStatus = 'closed'
         log(`WebSocket连接已关闭: 代码=${event.code}, 原因=${event.reason}`, 'info')
@@ -421,6 +429,7 @@ export async function connectToServer(config: WebSocketConfig): Promise<boolean>
 
     // 连接错误事件
     webSocket.onerror = () => {
+      if (webSocket !== socket) return
       isConnecting = false
       connectionStatus.isConnected = false
       stopHeartbeat()
@@ -555,6 +564,24 @@ function handleWebSocketMessage(event: MessageEvent): void {
 
     // 根据消息类型处理
     switch (data.type) {
+      case 'hello':
+        if (data.ready === false) break
+        isConnecting = false
+        connectionStatus.isConnected = true
+        connectionStatus.connectionStatus = 'connected'
+        notifyStatusChange()
+        break
+      case 'session':
+        if (data.state === 'failed') {
+          isConnecting = false
+          connectionStatus.isConnected = false
+          connectionStatus.connectionStatus = 'failed'
+          webSocket?.close()
+        } else if (data.state === 'preparing') {
+          connectionStatus.connectionStatus = 'connecting'
+        }
+        notifyStatusChange()
+        break
       case 'stt':
         handleSTTMessage(data)
         break

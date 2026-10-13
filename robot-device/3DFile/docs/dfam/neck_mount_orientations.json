@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/neck_mount.stl",
+  "scale": {
+    "bbox_diagonal_mm": 136.1176,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 241.59,
+        "support_area_pct": 0.9,
+        "build_height_mm": 28.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 7390.59,
+        "support_area_pct": 26.9,
+        "build_height_mm": 28.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 2164.96,
+        "support_area_pct": 7.9,
+        "build_height_mm": 88.0
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 2159.2,
+        "support_area_pct": 7.8,
+        "build_height_mm": 88.0
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 2625.8,
+        "support_area_pct": 9.5,
+        "build_height_mm": 100.0
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 2604.05,
+        "support_area_pct": 9.5,
+        "build_height_mm": 100.0
+      }
+    ]
+  },
+  "partial": false
+}

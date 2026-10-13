@@ -1,6 +1,10 @@
-import { shallowMount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { shallowMount, enableAutoUnmount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ROUTES } from '@/router/routes'
+import { STORAGE_SIDEBAR_WIDTH } from '@/constants/storage'
+
+enableAutoUnmount(afterEach)
 
 const userStoreMock = vi.hoisted(() => ({
   userInfo: null as { userId: number } | null,
@@ -24,6 +28,7 @@ const mountOptions = {
   global: {
     components: {
       RouterView: { template: '<div class="router-view-stub" />' },
+      ALayoutSider: { name: 'TestSider', props: ['width', 'collapsed'], template: '<aside><slot /></aside>' },
     },
   },
 }
@@ -31,6 +36,7 @@ const mountOptions = {
 describe('MainLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     userStoreMock.userInfo = { userId: 7 }
     userStoreMock.isAdmin = true
   })
@@ -55,5 +61,60 @@ describe('MainLayout', () => {
     shallowMount(MainLayout, mountOptions)
 
     expect(routerMock.push).toHaveBeenCalledWith(ROUTES.LOGIN)
+  })
+
+  it('dragging resizes the content offset and remembers the width on remount', async () => {
+    const wrapper = shallowMount(MainLayout, mountOptions)
+    const handle = wrapper.get('.sidebar-resize-handle')
+    const element = handle.element as HTMLElement
+    element.setPointerCapture = vi.fn()
+    element.hasPointerCapture = vi.fn().mockReturnValue(true)
+    element.releasePointerCapture = vi.fn()
+    async function pointer(type: string, clientX: number) {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      element.dispatchEvent(event)
+      await nextTick()
+    }
+    await pointer('pointerdown', 200)
+    await pointer('pointermove', 360)
+    expect(wrapper.get('.main-layout').attributes('style')).toContain('--app-content-offset: 360px')
+    expect(wrapper.findComponent({ name: 'ALayoutSider' }).props('width')).toBe(360)
+    await pointer('pointerup', 360)
+    expect(wrapper.get('.main-layout').classes()).not.toContain('is-resizing')
+    expect(localStorage.getItem(STORAGE_SIDEBAR_WIDTH)).toBe('360')
+    wrapper.unmount()
+    const restored = shallowMount(MainLayout, mountOptions)
+    expect(restored.get('[role="separator"]').attributes('aria-valuenow')).toBe('360')
+  })
+
+  it('keyboard controls respect bounds and double-click resets the width', async () => {
+    const wrapper = shallowMount(MainLayout, mountOptions)
+    const handle = wrapper.get('[role="separator"]')
+    await handle.trigger('keydown', { key: 'End' })
+    const maximum = handle.attributes('aria-valuemax')
+    expect(handle.attributes('aria-valuenow')).toBe(maximum)
+    await handle.trigger('keydown', { key: 'ArrowRight' })
+    expect(handle.attributes('aria-valuenow')).toBe(maximum)
+    await handle.trigger('keydown', { key: 'Home' })
+    await handle.trigger('keydown', { key: 'ArrowLeft' })
+    expect(handle.attributes('aria-valuenow')).toBe('200')
+    await handle.trigger('keydown', { key: 'ArrowRight' })
+    expect(handle.attributes('aria-valuenow')).toBe('216')
+    await handle.trigger('dblclick')
+    expect(handle.attributes('aria-valuenow')).toBe('200')
+  })
+
+  it('collapse keeps the expanded preference and removes the drag handle', async () => {
+    const wrapper = shallowMount(MainLayout, mountOptions)
+    await wrapper.get('[role="separator"]').trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+    const sider = wrapper.findComponent({ name: 'ALayoutSider' })
+    sider.vm.$emit('update:collapsed', true)
+    await nextTick()
+    expect(wrapper.find('[role="separator"]').exists()).toBe(false)
+    expect(wrapper.get('.main-layout').attributes('style')).toContain('--app-content-offset: 80px')
+    sider.vm.$emit('update:collapsed', false)
+    await nextTick()
+    expect(wrapper.get('[role="separator"]').attributes('aria-valuenow')).toBe('240')
   })
 })

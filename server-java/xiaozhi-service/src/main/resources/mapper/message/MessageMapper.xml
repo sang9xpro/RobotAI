@@ -63,4 +63,32 @@
         <include refid="Message_Query_Where"/>
         ORDER BY m.createTime DESC, m.sender DESC
     </select>
+    <select id="selectDeviceHistory" resultType="com.xiaozhi.message.model.MessageProjection">
+        SELECT <include refid="Message_Select_Columns"/>, m.userId, u.username, u.name AS ownerName
+        FROM sys_message m
+        LEFT JOIN sys_device d ON m.deviceId = d.deviceId
+        LEFT JOIN sys_role r ON m.roleId = r.roleId
+        LEFT JOIN sys_user u ON m.userId = u.userId
+        WHERE m.state = '1'
+        <!-- Ownership at the time of the message AND current device ownership.
+             Transferring a robot never exposes the previous owner's conversation. -->
+        <if test="scopeUserId != null">
+            AND m.userId = #{scopeUserId} AND d.userId = #{scopeUserId}
+        </if>
+        <if test="filter.deviceId != null and filter.deviceId != ''">AND m.deviceId = #{filter.deviceId}</if>
+        <if test="filter.deviceName != null and filter.deviceName != ''">AND d.deviceName LIKE CONCAT('%',#{filter.deviceName},'%')</if>
+        <if test="filter.sender != null and filter.sender != ''">AND m.sender = #{filter.sender}</if>
+        <if test="filter.messageType != null and filter.messageType != ''">AND m.messageType = #{filter.messageType}</if>
+        <if test="filter.roleId != null">AND m.roleId = #{filter.roleId}</if>
+        <if test="filter.startTime != null">AND m.createTime <![CDATA[ >= ]]> #{filter.startTime}</if>
+        <!-- Requests have second precision; include fractional timestamps in the final second. -->
+        <if test="filter.endTime != null">AND m.createTime <![CDATA[ < ]]> DATE_ADD(#{filter.endTime}, INTERVAL 1 SECOND)</if>
+        <if test="filter.sessionId != null and filter.sessionId != ''">AND m.sessionId = #{filter.sessionId}</if>
+        <if test="filter.source != null and filter.source != ''">AND m.source = #{filter.source}</if>
+        <if test="filter.keyword != null and filter.keyword != ''">AND m.message LIKE CONCAT('%',#{filter.keyword},'%')</if>
+        <choose>
+            <when test="filter.order == 'asc'">ORDER BY m.createTime ASC, m.messageId ASC</when>
+            <otherwise>ORDER BY m.createTime DESC, m.messageId DESC</otherwise>
+        </choose>
+    </select>
 </mapper>

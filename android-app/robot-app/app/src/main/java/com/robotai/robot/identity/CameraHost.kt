@@ -57,12 +57,12 @@ import java.util.concurrent.TimeUnit
             identity.cameraStatus("Đang mở camera…")
             analysis.setAnalyzer(executor) { image ->
                 try {
-                    if(!disposed && SystemClock.elapsedRealtime()-last>=80) {
+                    if(!disposed && SystemClock.elapsedRealtime()-last>=identity.cameraIntervalMs) {
                         last=SystemClock.elapsedRealtime()
                         val bitmap=rgbaBitmap(image)
                         try {
                             val faces=Tasks.await(detector.process(InputImage.fromBitmap(bitmap,0)),3,TimeUnit.SECONDS)
-                            if(!disposed) runBlocking { identity.analyze(bitmap,faces,epoch); identity.rememberFrame(bitmap,epoch) }
+                            if(!disposed) runBlocking { identity.analyze(bitmap,faces,epoch,last); identity.rememberFrame(bitmap,epoch) }
                         } finally { bitmap.recycle() }
                     }
                 } catch(e:Exception) { if(!disposed) { identity.clearFaces(); identity.cameraStatus("Lỗi camera: ${e.javaClass.simpleName}") } }

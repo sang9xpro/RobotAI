@@ -150,7 +150,7 @@ public class ScheduledPlayer extends Player {
                     running = true;
 
                     // 使用虚拟线程，轻量级，可以创建成千上万个
-                    senderThread = Thread.startVirtualThread(this::sendFramesLoop);
+                    senderThread = Thread.startVirtualThread(session.getDialogueContext().getConversationTransport().bind(this::sendFramesLoop));
                 }
             } else {
                 // 当前已有TTS在工作，加入队列排队

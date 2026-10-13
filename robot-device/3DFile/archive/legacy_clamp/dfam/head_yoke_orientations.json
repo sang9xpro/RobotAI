@@ -1,0 +1,51 @@
+{
+  "file": "/Volumes/SSD_Sang/Source Code/RobotAI/robot-device/3DFile/STL/head_yoke.stl",
+  "scale": {
+    "bbox_diagonal_mm": 61.8809,
+    "units_suspect": false,
+    "note": "bbox consistent with millimetre units"
+  },
+  "orientations": {
+    "angle_limit_used_deg": 45.0,
+    "pct_denominator": "total surface area",
+    "candidates": [
+      {
+        "orientation": "current_plus_z",
+        "support_area_mm2": 466.68,
+        "support_area_pct": 9.1,
+        "build_height_mm": 50.0
+      },
+      {
+        "orientation": "flip_180_x",
+        "support_area_mm2": 593.39,
+        "support_area_pct": 11.5,
+        "build_height_mm": 50.0
+      },
+      {
+        "orientation": "rot_plus_90_x",
+        "support_area_mm2": 240.24,
+        "support_area_pct": 4.7,
+        "build_height_mm": 27.0
+      },
+      {
+        "orientation": "rot_minus_90_x",
+        "support_area_mm2": 390.09,
+        "support_area_pct": 7.6,
+        "build_height_mm": 27.0
+      },
+      {
+        "orientation": "rot_plus_90_y",
+        "support_area_mm2": 427.09,
+        "support_area_pct": 8.3,
+        "build_height_mm": 24.5
+      },
+      {
+        "orientation": "rot_minus_90_y",
+        "support_area_mm2": 1262.17,
+        "support_area_pct": 24.5,
+        "build_height_mm": 24.5
+      }
+    ]
+  },
+  "partial": false
+}

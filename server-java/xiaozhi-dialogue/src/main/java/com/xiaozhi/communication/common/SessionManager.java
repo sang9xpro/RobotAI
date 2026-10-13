@@ -133,6 +133,7 @@ public class SessionManager {
     @EventListener(ContextClosedEvent.class)
     public void onContextClosed() {
         shuttingDown = true;
+        for (ChatSession session : java.util.List.copyOf(sessions.values())) closeSession(session);
     }
 
     /**

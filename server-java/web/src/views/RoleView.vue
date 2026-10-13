@@ -21,6 +21,7 @@ import { useRequest } from '@/composables/useRequest'
 import { useUserStore } from '@/store/user'
 import { ROUTES } from '@/router/routes'
 import { shouldIgnoreRequestError } from '@/services/request'
+import { selectRobotRole } from '@/services/robotProfile'
 import { queryRoles, addRole, updateRole, deleteRole, updateToolsStatus } from '@/services/role'
 import { queryTemplates } from '@/services/template'
 import { useAvatar } from '@/composables/useAvatar'
@@ -60,6 +61,7 @@ const {
   sttLoading,
   allModels,
   allVoices,
+  ttsConfigurations,
   sttOptions,
   localSttLabel,
   localSttAvailable,
@@ -138,7 +140,7 @@ const {
 
 // 试听音频缓存 key。语速/语调/指令改了就是另一段音频，必须一起进 key，否则会放出旧参数的录音
 const voiceCacheKey = (voiceName: string) =>
-  [voiceName, formData.ttsPitch ?? 1.0, formData.ttsSpeed ?? 1.0].join('|')
+  [formData.ttsId, voiceName, formData.ttsPitch ?? 1.0, formData.ttsSpeed ?? 1.0].join('|')
 
 // 提示词模板
 const promptEditorMode = ref<'custom' | 'template'>('custom')
@@ -256,8 +258,9 @@ const handleEdit = (record: Role) => {
     const modelInfo = getModelInfo(record.modelId || undefined)
 
     // 获取语音信息
-    const voiceInfo = allVoices.value.find(v => v.value === (record.voiceName || ''))
+    const voiceInfo = allVoices.value.find(v => v.value === (record.voiceName || '') && v.ttsId === (record.ttsId ?? -1))
 
+    selectedProvider.value = ''
     // 设置表单所有值（包括高级设置的值）
     Object.assign(formData, {
       roleName: record.roleName,
@@ -276,7 +279,7 @@ const handleEdit = (record: Role) => {
       vadSilenceMs: record.vadSilenceMs ?? 1200,
       inactiveTimeoutSeconds: record.inactiveTimeoutSeconds ?? 60,
       voiceName: record.voiceName || '',
-      ttsId: voiceInfo?.ttsId,
+      ttsId: record.ttsId ?? voiceInfo?.ttsId ?? -1,
       gender: voiceInfo?.gender || '',
       ttsPitch: record.ttsPitch ?? 1.0,
       ttsSpeed: record.ttsSpeed ?? 1.0,
@@ -330,8 +333,8 @@ const handleSubmit = async () => {
     await formRef.value?.validate()
 
     // 统一处理：从所有可用音色中查找
-    const voiceInfo = allVoices.value.find(v => v.value === formData.voiceName)
-    const ttsId = voiceInfo?.ttsId || -1
+    const voiceInfo = allVoices.value.find(v => v.value === formData.voiceName && (formData.ttsId == null || v.ttsId === formData.ttsId))
+    const ttsId = formData.ttsId ?? voiceInfo?.ttsId ?? -1
     
     const submitData: Partial<RoleFormData> & { avatar?: string } = {
       ...formData,
@@ -455,18 +458,17 @@ const handlePlayVoice = async (voiceName?: string) => {
   if (!voiceName) return
 
   // 统一处理：从所有可用音色中查找
-  const voiceInfo = allVoices.value.find(v => v.value === voiceName)
+  const voiceInfo = allVoices.value.find(v => v.value === voiceName && (formData.ttsId == null || v.ttsId === formData.ttsId))
   if (!voiceInfo) {
-    message.error(t('role.voiceNotFound'))
-    return
+    if (!customTts.value) { message.error(t('role.voiceNotFound')); return }
   }
 
   try {
     // 播放态/加载态/缓存都由 useAudioPlayer 处理，同一音色再点一次即停止
     await playAudioFromApi({
       voiceName,
-      ttsId: voiceInfo.ttsId || -1,
-      provider: voiceInfo.provider,
+      ttsId: formData.ttsId ?? voiceInfo?.ttsId ?? -1,
+      provider: voiceInfo?.provider || 'openai',
       audioId: voiceName,
       cacheKey: voiceCacheKey(voiceName),
       ttsPitch: formData.ttsPitch || 1.0,
@@ -593,13 +595,26 @@ const providerOptions = computed(() => {
 
 // 根据提供商过滤音色选项
 const filteredVoices = computed(() => {
-  const list = allVoices.value
+  const list = allVoices.value.filter(v => formData.ttsId == null || v.ttsId === formData.ttsId)
   return selectedProvider.value ? list.filter(v => v.provider === selectedProvider.value) : list
 })
 
 // 提供商切换：切换后清空已选音色
 const handleProviderChange = () => {
   formData.voiceName = undefined
+  formData.ttsId = undefined
+}
+
+const customTts = computed(() => ttsConfigurations?.value?.find(c => Number(c.configId) === formData.ttsId)?.provider === 'openai')
+const ttsConfigOptions = computed(() => [
+  { label: 'Microsoft Edge', value: -1 },
+  ...(ttsConfigurations?.value || [])
+    .map(c => ({ label: `${c.configDesc || c.configName} (${c.provider})`, value: Number(c.configId) })),
+])
+function changeTts() { formData.voiceName = undefined; stopAllVoicePreview() }
+const { execute: chooseAndroid, loading: choosingAndroid } = useRequest()
+async function useOnAndroid(roleId: number) {
+  await chooseAndroid(() => selectRobotRole(roleId), { showSuccess: true, successText: t('robotai.applied') })
 }
 
 // 初始化：并行加载所有数据（非阻塞式）
@@ -615,6 +630,7 @@ Promise.all([
 
 <template>
   <div class="role-view">
+    <a-alert type="info" show-icon :message="t('robotai.configHint')" :description="t('robotai.nextSession')" style="margin-bottom:16px" />
     <!-- 查询表单 -->
     <a-card :bordered="false" style="margin-bottom: 16px" class="search-card">
       <a-form layout="horizontal" :colon="false">
@@ -740,6 +756,7 @@ Promise.all([
                   @delete="() => handleDelete(record)"
                 >
                   <template #actions>
+                    <a-button v-if="!record.userId || record.userId === userStore.userInfo?.userId" type="link" size="small" :loading="choosingAndroid" @click="useOnAndroid(record.roleId)">{{ t('robotai.useAndroid') }}</a-button>
                     <a-button
                       v-permission="'system:role:memory'"
                       type="link"
@@ -1101,8 +1118,15 @@ Promise.all([
             <!-- 语音合成设置 -->
             <a-divider orientation="left">{{ t('role.voiceSynthesisSettings') }}</a-divider>
 
+            <a-form-item :label="t('robotai.chooseTts')" name="ttsId" :rules="[{ required: true, message: t('robotai.chooseTts') }]">
+              <a-select v-model:value="formData.ttsId" :options="ttsConfigOptions" :loading="voiceLoading" @change="changeTts" />
+            </a-form-item>
+            <a-form-item v-if="customTts" :label="t('robotai.customVoice')" name="voiceName" :rules="[{ required: true, message: t('role.selectVoice') }]">
+              <a-input v-model:value="formData.voiceName" :maxlength="200" placeholder="alloy" />
+              <a-button @click="handlePlayVoice(formData.voiceName)">{{ t('robotai.preview') }}</a-button>
+            </a-form-item>
             <!-- 音色选择 -->
-            <a-row :gutter="20">
+            <a-row v-if="!customTts" :gutter="20">
               <a-col :xl="6" :lg="8" :xs="24">
                 <a-form-item>
                   <a-select
@@ -1130,6 +1154,7 @@ Promise.all([
                 >
                   <a-select
                     v-model:value="formData.voiceName"
+                    :disabled="formData.ttsId == null"
                     :placeholder="t('role.selectVoice')"
                     :loading="voiceLoading"
                     show-search
@@ -1197,7 +1222,7 @@ Promise.all([
                     </a-form-item>
                   </a-col>
 
-                  <a-col :xl="8" :lg="12" :xs="24">
+                  <a-col v-if="!customTts" :xl="8" :lg="12" :xs="24">
                     <a-form-item
                       :label="t('role.voicePitch')"
                       name="ttsPitch"

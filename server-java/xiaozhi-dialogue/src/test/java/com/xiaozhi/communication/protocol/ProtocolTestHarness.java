@@ -169,6 +169,7 @@ class ProtocolTestHarness {
                 "personaCleanup", personaCleanup);
 
         inject(dialogueService,
+                "personalMemoryStore", mock(com.xiaozhi.common.port.PersonalMemoryStore.class),
                 "personaFactory", personaFactory,
                 "messageService", messageSender,
                 "vadService", vadService,

@@ -3,6 +3,7 @@ import { computed, watch } from 'vue'
 import { ConfigProvider, message } from 'ant-design-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import enUS from 'ant-design-vue/es/locale/en_US'
+import viVN from 'ant-design-vue/es/locale/vi_VN'
 import type { Locale } from 'ant-design-vue/es/locale'
 import { i18n, ensureLocaleLoaded, type SupportedLocale } from '@/locales'
 import { STORAGE_LOCALE } from '@/constants/storage'
@@ -13,6 +14,7 @@ export type LocaleType = SupportedLocale
 const localeMap: Record<LocaleType, Locale> = {
   'zh-CN': zhCN,
   'en-US': enUS,
+  'vi-VN': viVN,
 }
 
 // ConfigProvider.config 的 TS 声明只认旧版几个色值字段，运行时其实是把整个 params 浅合并进
@@ -27,11 +29,13 @@ function syncStaticMethodsLocale(locale: Locale) {
 const localeNames: Record<LocaleType, string> = {
   'zh-CN': '简体中文',
   'en-US': 'English',
+  'vi-VN': 'Tiếng Việt',
 }
 
 // 语言是全局唯一的一份状态，放模块作用域：放在函数体里的话，每个调用 useLocale() 的组件
 // 都会注册一个 watch，切一次语言就重复跑一遍语言包加载、加载失败还会弹两条提示
-const currentLocale = useStorage<LocaleType>(STORAGE_LOCALE, 'zh-CN')
+const currentLocale = useStorage<LocaleType>(STORAGE_LOCALE, 'vi-VN')
+if (!(currentLocale.value in localeMap)) currentLocale.value = 'vi-VN'
 
 // 获取 Ant Design Vue 的 locale 对象
 const antdLocale = computed(() => localeMap[currentLocale.value])
@@ -71,7 +75,7 @@ watch(
 export function useLocale() {
   // 切换语言
   const toggleLocale = () => {
-    currentLocale.value = currentLocale.value === 'zh-CN' ? 'en-US' : 'zh-CN'
+    currentLocale.value = availableLocales[(availableLocales.indexOf(currentLocale.value) + 1) % availableLocales.length]!
   }
 
   // 设置特定语言

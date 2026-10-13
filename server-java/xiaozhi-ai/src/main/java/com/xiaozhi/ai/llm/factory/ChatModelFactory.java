@@ -105,27 +105,10 @@ public class ChatModelFactory {
         if (configId == null) {
             return;
         }
-        chatModelCache.asMap().entrySet().removeIf(entry -> {
-            if (!entry.getKey().startsWith(configId + ":")) {
-                return false;
-            }
-            closeIfNeeded(entry.getValue());
-            return true;
-        });
+        // Existing sessions retain their captured model, including Coze's streaming executor.
+        // Invalidation must only stop reuse by future sessions, as with capacity eviction.
+        chatModelCache.asMap().keySet().removeIf(key -> key.startsWith(configId + ":"));
         embeddingModelCache.remove(configId);
-    }
-
-    /**
-     * 移出缓存的 ChatModel 若自带 HTTP 客户端等常驻资源，在此释放；只有不再被复用的实例才会走到这里。
-     */
-    private void closeIfNeeded(ChatModel chatModel) {
-        if (chatModel instanceof AutoCloseable closeable) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                log.warn("释放ChatModel资源失败: {}", chatModel.getClass().getSimpleName(), e);
-            }
-        }
     }
 
     public ChatModel getVisionModel() {

@@ -20,7 +20,7 @@ class SocketBackend : BackendPort {
         val request = builder.build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send("""{"type":"hello","version":1,"transport":"websocket","features":{"mcp":true},"audio_params":{"format":"opus","sample_rate":16000,"channels":1,"frame_duration":60},"robotai":{"contract_version":1,"audio_envelopes":["rai1"],"stt_partial":true,"playback_progress":true}}""")
+                webSocket.send("""{"type":"hello","version":1,"transport":"websocket","features":{"mcp":true},"audio_params":{"format":"opus","sample_rate":16000,"channels":1,"frame_duration":60},"robotai":{"contract_version":1,"audio_envelopes":["rai1"],"stt_partial":true,"playback_progress":true,"conversation_context_v1":true}}""")
             }
             override fun onMessage(webSocket: WebSocket, text: String) = onText(text)
             override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) = onAudio(bytes.toByteArray())

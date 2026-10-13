@@ -1,0 +1,47 @@
+{
+  "units": "mm",
+  "axis": [
+    0,
+    12,
+    102,
+    1,
+    0,
+    0
+  ],
+  "sampled_poses": [
+    {
+      "angle_deg": -15,
+      "collisions": []
+    },
+    {
+      "angle_deg": -10,
+      "collisions": []
+    },
+    {
+      "angle_deg": -5,
+      "collisions": []
+    },
+    {
+      "angle_deg": 0,
+      "collisions": []
+    },
+    {
+      "angle_deg": 5,
+      "collisions": []
+    },
+    {
+      "angle_deg": 10,
+      "collisions": []
+    },
+    {
+      "angle_deg": 15,
+      "collisions": []
+    }
+  ],
+  "scope": "Rigid geometric interference only; cable flex, torque and thermal behavior require prototype tests.",
+  "operating_limit_deg": [
+    -10,
+    10
+  ],
+  "passed_within_operating_limit": true
+}

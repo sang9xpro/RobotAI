@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { message as antMessage, Modal } from 'ant-design-vue'
+import { ref, computed, watch, onScopeDispose } from 'vue'
+import { message as antMessage } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, TableColumnsType } from 'ant-design-vue'
 import { useConfigManager } from '@/composables/useConfigManager'
+import { useChatGptModels, effectiveReasoningEffort } from '@/composables/useChatGptModels'
 import { useUserStore } from '@/store/user'
 import { useConfirm } from '@/composables/useConfirm'
 import { useRequest } from '@/composables/useRequest'
 import TableActionButtons from '@/components/TableActionButtons.vue'
 import TableEmptyState from '@/components/TableEmptyState.vue'
 import type { ConfigType, Config, ConfigField, LLMModel, LlmModelOption } from '@/types/config'
-import { addConfig, updateConfig, testConfig } from '@/services/config'
+import { addConfig, updateConfig, testConfig, testSttConfig, testTtsConfig, testVisionConfig } from '@/services/config'
+import { getResourceUrl } from '@/utils/resource'
 import { CODE_CONFIRM_REQUIRED } from '@/constants/api'
 
 const { t } = useI18n()
@@ -57,7 +59,7 @@ const SECRET_FIELDS = ['apiKey', 'apiSecret', 'ak', 'sk']
 /** providerConfig 里 config. 开头的值是 i18n key，其余（品牌名、示例值）原样展示 */
 function localized(text?: string) {
   if (!text) return ''
-  return text.startsWith('config.') ? t(text) : text
+  return text.startsWith('config.') || text.startsWith('robotai.') ? t(text) : text
 }
 
 function isSecretField(field: ConfigField) {
@@ -98,6 +100,35 @@ const formData = ref<Partial<Config>>({
   sk: undefined,
   enableThinking: false,
 })
+
+const isChatGpt = computed(() => props.configType === 'llm' && currentType.value === 'codex-chatgpt')
+const chatGptCatalog = useChatGptModels(
+  () => ({ ...formData.value, configId: editingConfigId.value }),
+  () => isChatGpt.value && activeTabKey.value === '2',
+)
+const chatGptModelOptions = chatGptCatalog.options
+const chatGptModelsLoading = chatGptCatalog.loading
+const chatGptModelsError = chatGptCatalog.error
+const canLoadChatGptModels = chatGptCatalog.canLoad
+const reasoningLabels: Record<string, string> = {
+  none: 'reasoningNone', minimal: 'reasoningMinimal', low: 'reasoningLow', medium: 'reasoningMedium',
+  high: 'reasoningHigh', xhigh: 'reasoningXHigh', max: 'reasoningMax', ultra: 'reasoningUltra',
+}
+function reasoningLabel(effort: string) {
+  return reasoningLabels[effort] ? `${t(`robotai.${reasoningLabels[effort]}`)} (${effort})` : effort
+}
+const reasoningOptions = computed(() => chatGptCatalog.reasoningEfforts.value.map(value => ({
+  value, label: reasoningLabel(value),
+})))
+async function validateReasoningEffort() {
+  if (!isChatGpt.value) return
+  if (chatGptModelsLoading.value || chatGptModelsError.value || !chatGptCatalog.selectedModel.value) {
+    throw new Error(t('robotai.reasoningCatalogRequired'))
+  }
+  if (!formData.value.reasoningEffort || !chatGptCatalog.reasoningEfforts.value.includes(formData.value.reasoningEffort)) {
+    throw new Error(t('robotai.reasoningUnsupported'))
+  }
+}
 
 // providerConfig 驱动的动态字段一律是文本输入，Config 的索引签名比这更宽（要容纳 isDefault/enableThinking 这类布尔具名字段），
 // 所以读写收敛到这两个函数里做一次收窄，避免把 any 撒到模板上
@@ -184,6 +215,10 @@ const columns = computed(() => {
  */
 function handleTypeChange(value: string) {
   currentType.value = value
+  if (value === 'codex-chatgpt') formData.value.reasoningEffort = effectiveReasoningEffort(formData.value)
+  if (value === 'codex-chatgpt' && formData.value.modelType === 'embedding') {
+    formData.value.modelType = 'chat'
+  }
   
   // 清空模型名称
   formData.value.configName = undefined
@@ -236,6 +271,7 @@ function handleTabChange(key: string) {
  * 编辑配置
  */
 function handleEdit(record: Config) {
+  clearTestImage()
   editingConfigId.value = record.configId
   currentType.value = record.provider || ''
   activeTabKey.value = '2'
@@ -247,6 +283,7 @@ function handleEdit(record: Config) {
     modelType: props.configType === 'llm' ? (record.modelType || 'chat') : undefined,
     isDefault: props.configType != 'tts' ? record.isDefault === '1' : false,
     enableThinking: !!record.enableThinking,
+    reasoningEffort: record.provider === 'codex-chatgpt' ? effectiveReasoningEffort(record) : undefined,
   }
 
   // LLM 更新模型选项
@@ -257,6 +294,53 @@ function handleEdit(record: Config) {
 
 // 测试连接中
 const testing = ref(false)
+const testAudioFile = ref<File>()
+const testImageFile = ref<File>()
+const testImageInput = ref<HTMLInputElement>()
+const isVisionTest = computed(() => props.configType === 'llm' && formData.value.modelType === 'vision')
+const testVoiceName = ref('alloy')
+const testSampleText = ref('Xin chào, đây là bài kiểm tra RobotAI.')
+let testTicket = 0
+onScopeDispose(() => { testTicket++ })
+const testResult = ref<{ success: boolean; detail: string; elapsedMillis: number; audioUrl?: string }>()
+watch([formData, editingConfigId, testVoiceName, testSampleText], () => { testTicket++; testResult.value = undefined }, { deep: true })
+watch(() => formData.value.modelType, () => { clearTestImage() })
+
+function clearTestImage() {
+  testTicket++
+  testImageFile.value = undefined
+  testResult.value = undefined
+  if (testImageInput.value) testImageInput.value.value = ''
+}
+
+function onTestImageChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  testTicket++
+  testImageFile.value = undefined
+  testResult.value = undefined
+  if (!file) return
+  if (!/\.(png|jpe?g|gif)$/i.test(file.name)
+    || (file.type && !['image/png', 'image/jpeg', 'image/gif'].includes(file.type))
+    || file.size === 0 || file.size > 5 * 1024 * 1024) {
+    input.value = ''
+    antMessage.error(t('robotai.testImageInvalid'))
+    return
+  }
+  testImageFile.value = file
+}
+function onTestAudioChange(event: Event) {
+  testTicket++
+  const file = (event.target as HTMLInputElement).files?.[0]
+  testAudioFile.value = undefined
+  testResult.value = undefined
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.wav') || file.size > 1025536) {
+    antMessage.error(t('robotai.testAudio'))
+    return
+  }
+  testAudioFile.value = file
+}
 
 // 表单提交中
 const submitLoading = ref(false)
@@ -269,6 +353,12 @@ async function handleTest() {
 
   try {
     await formRef.value.validate()
+    await validateReasoningEffort()
+
+    if (isVisionTest.value && !testSampleText.value.trim()) {
+      antMessage.error(t('robotai.testTextRequired'))
+      return
+    }
 
     const submitData: Partial<Config> = {
       ...formData.value,
@@ -276,17 +366,28 @@ async function handleTest() {
       configType: props.configType,
     }
     submitData.isDefault = formData.value.isDefault == '1' ? '1' : '0'
+    if (props.configType === 'llm') submitData.sampleText = testSampleText.value
 
-    // 测试结果无论成败都要把后端原文摊给用户看，所以走 Modal 展示、不弹 toast
-    await executeTestConfig(() => testConfig(submitData), {
+    // Display provider results inline and ignore responses for a replaced question or attachment.
+    const seq = ++testTicket
+    const start = performance.now()
+    testResult.value = undefined
+    await executeTestConfig(() => props.configType === 'stt' && testAudioFile.value
+      ? testSttConfig(submitData, testAudioFile.value)
+      : isVisionTest.value && testImageFile.value
+      ? testVisionConfig(submitData, testImageFile.value)
+      : testConfig(submitData), {
       loadingRef: testing,
       showError: false,
       networkErrorText: t('config.testFailed'),
-      onSuccess: (_data, res) => {
-        Modal.success({ title: t('config.testSuccess'), content: res.message })
+      onSuccess: (data, res) => {
+        if (seq !== testTicket) return
+        testResult.value = { success: true, detail: data?.detail || res.message,
+          elapsedMillis: data?.elapsedMillis ?? Math.round(performance.now() - start) }
       },
       onFailure: (res) => {
-        Modal.error({ title: t('config.testFailed'), content: res.message })
+        if (seq !== testTicket) return true
+        testResult.value = { success: false, detail: res.message, elapsedMillis: Math.round(performance.now() - start) }
         return true
       },
     })
@@ -303,11 +404,38 @@ async function handleTest() {
 /**
  * 提交表单
  */
+async function handleTestTts() {
+  try {
+    await formRef.value?.validate()
+    if (!testVoiceName.value.trim()) return
+    const seq = ++testTicket
+    const start = performance.now()
+    testResult.value = undefined
+    await executeTestConfig(() => testTtsConfig({ ...formData.value, configId: editingConfigId.value,
+      configType: 'tts', voiceName: testVoiceName.value, sampleText: testSampleText.value }), {
+      loadingRef: testing, showError: false,
+      onSuccess: (data, res) => {
+        if (seq !== testTicket) return
+        testResult.value = { success: true, detail: res.message, elapsedMillis: Math.round(performance.now() - start),
+          audioUrl: getResourceUrl(data.audioUrl) }
+      },
+      onFailure: res => {
+        if (seq !== testTicket) return true
+        testResult.value = { success: false, detail: res.message, elapsedMillis: Math.round(performance.now() - start) }
+        return true
+      }
+    })
+  } catch {
+    antMessage.error(t('config.fillRequiredFields'))
+  }
+}
+
 async function handleSubmit() {
   if (!formRef.value) return
 
   try {
     await formRef.value.validate()
+    await validateReasoningEffort()
     
     // 准备提交数据
     const submitData: Partial<Config> = {
@@ -337,7 +465,7 @@ async function handleSubmit() {
       submitData.contextLength = knownModel?.max_tokens
       
       // 模型名称不在已知列表里时问一句，取消则中断提交
-      if (!isValid && validModels.length > 0) {
+      if (!isChatGpt.value && !isValid && validModels.length > 0) {
         const shouldContinue = await confirmAsync({
           title: t('common.confirmSubmit'),
           content: t('config.modelNameInvalid', { name: submitData.configName }),
@@ -404,6 +532,7 @@ async function submitConfig(submitData: Partial<Config>, confirmStorageSwitch: b
  * 重置表单
  */
 function resetForm() {
+  clearTestImage()
   formRef.value?.resetFields()
   currentType.value = ''
   editingConfigId.value = undefined
@@ -557,7 +686,10 @@ fetchData()
                 <a-tag :color="getModelTypeTag(record.modelType).color">
                   {{ getModelTypeTag(record.modelType).text }}
                 </a-tag>
-                <a-tag v-if="record.enableThinking" color="cyan">
+                <a-tag v-if="record.provider === 'codex-chatgpt'" color="cyan">
+                  {{ reasoningLabel(effectiveReasoningEffort(record)) }}
+                </a-tag>
+                <a-tag v-else-if="record.enableThinking" color="cyan">
                   {{ t('config.enableThinking') }}
                 </a-tag>
               </template>
@@ -650,20 +782,30 @@ fetchData()
                     <a-select-option value="chat">{{ t('config.chatModel') }}</a-select-option>
                     <a-select-option value="vision">{{ t('config.visionModel') }}</a-select-option>
                     <a-select-option value="intent">{{ t('config.intentModel') }}</a-select-option>
-                    <a-select-option value="embedding">{{ t('config.embeddingModel') }}</a-select-option>
+                    <a-select-option value="embedding" :disabled="isChatGpt">{{ t('config.embeddingModel') }}</a-select-option>
                   </a-select>
                 </a-form-item>
               </a-col>
 
               <a-col :xl="8" :lg="12" :xs="24">
                 <a-form-item
-                  :label="`${t(configTypeInfo.label)} ${t('common.name')}`"
+                  :label="isChatGpt ? t('robotai.chatGptModel') : formData.provider?.toLowerCase() === 'openai' ? t('robotai.modelId') : `${t(configTypeInfo.label)} ${t('common.name')}`"
                   name="configName"
                   :rules="[{ required: true, message: t('config.enterName', { type: t(configTypeInfo.label) }) }]"
                 >
+                  <a-select
+                    v-if="isChatGpt"
+                    v-model:value="formData.configName"
+                    show-search
+                    allow-clear
+                    :placeholder="t('robotai.selectChatGptModel')"
+                    :options="chatGptModelOptions"
+                    :loading="chatGptModelsLoading"
+                    option-filter-prop="label"
+                  />
                   <!-- LLM 使用 AutoComplete（可选可填） -->
                   <a-auto-complete
-                    v-if="configType === 'llm' && currentType"
+                    v-else-if="configType === 'llm' && currentType"
                     v-model:value="formData.configName"
                     allow-clear
                     :placeholder="t('config.enterName', { type: t(configTypeInfo.label) })"
@@ -691,6 +833,18 @@ fetchData()
                     v-model:value="formData.configName"
                     :placeholder="t('config.enterName', { type: t(configTypeInfo.label) })"
                   />
+                  <template v-if="isChatGpt" #extra>
+                    <div style="margin-top: 6px">
+                      <span :style="chatGptModelsError ? { color: 'var(--ant-color-error)' } : undefined">
+                        {{ chatGptModelsError ? t('robotai.chatGptModelsFailed')
+                          : !canLoadChatGptModels ? t('robotai.chatGptModelsCredentials') : t('robotai.chatGptModelsHint') }}
+                      </span>
+                      <a-button type="link" size="small" :loading="chatGptModelsLoading"
+                        :disabled="!canLoadChatGptModels" @click="chatGptCatalog.refresh()">
+                        {{ t('robotai.refresh') }}
+                      </a-button>
+                    </div>
+                  </template>
                 </a-form-item>
               </a-col>
             </a-row>
@@ -716,9 +870,18 @@ fetchData()
               </span>
             </a-form-item>
 
-            <!-- 思考模式开关（仅 LLM） -->
+            <a-form-item v-if="isChatGpt" :label="t('robotai.reasoningEffort')" name="reasoningEffort"
+              :rules="[{ validator: validateReasoningEffort }]">
+              <a-select v-model:value="formData.reasoningEffort" :options="reasoningOptions"
+                :placeholder="t('robotai.selectReasoningEffort')" :loading="chatGptModelsLoading"
+                :disabled="chatGptModelsLoading || reasoningOptions.length === 0"
+                style="max-width: 360px" />
+              <template #extra>{{ t('robotai.reasoningHint') }}</template>
+            </a-form-item>
+
+            <!-- Legacy thinking switch for other providers. -->
             <a-form-item
-              v-if="configType === 'llm'"
+              v-else-if="configType === 'llm'"
               :label="t('config.enableThinking')"
               name="enableThinking"
             >
@@ -773,6 +936,7 @@ fetchData()
                       :value="dynamicFieldValue(field.name)"
                       :placeholder="fieldPlaceholder(field)"
                       :type="field.inputType || 'text'"
+                      :autocomplete="isSecretField(field) ? 'new-password' : 'off'"
                       @update:value="(v: string) => setDynamicField(field.name, v)"
                     >
                       <template v-if="field.suffix" #suffix>
@@ -791,6 +955,33 @@ fetchData()
               <a-empty :description="t('config.selectCategoryFirst', { type: t(configTypeInfo.label) })" />
             </a-card>
 
+            <a-card v-if="['llm', 'stt', 'tts'].includes(configType)" size="small" style="margin-top: 16px">
+              <a-alert type="info" show-icon :message="t('robotai.testingConsent')" :description="t('robotai.nextSession')" style="margin-bottom:16px" />
+              <p v-if="['stt', 'tts'].includes(configType) && formData.provider?.toLowerCase() === 'openai'">{{ t('robotai.compatibleSpeechHint') }}</p>
+              <template v-if="configType === 'stt'">
+                <label for="robotai-stt-sample">{{ t('robotai.testAudio') }}</label>
+                <input id="robotai-stt-sample" type="file" accept=".wav,audio/wav" @change="onTestAudioChange" />
+                <p>{{ t('robotai.testAudio') }}</p>
+              </template>
+              <a-form-item v-if="configType === 'llm'" :label="t('robotai.testText')"><a-textarea v-model:value="testSampleText" :maxlength="500" /></a-form-item>
+              <a-form-item v-if="isVisionTest" :label="t('robotai.testImage')">
+                <a-space>
+                  <input id="robotai-vision-sample" ref="testImageInput" type="file"
+                    :aria-label="t('robotai.testImage')" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"
+                    @change="onTestImageChange" />
+                  <a-button v-if="testImageFile" size="small" @click="clearTestImage">{{ t('robotai.removeTestImage') }}</a-button>
+                </a-space>
+                <p class="field-help">{{ t('robotai.testImageHint') }}</p>
+              </a-form-item>
+              <template v-if="configType === 'tts'">
+                <a-form-item :label="t('robotai.testVoice')"><a-input v-model:value="testVoiceName" /></a-form-item>
+                <a-form-item :label="t('robotai.testText')"><a-textarea v-model:value="testSampleText" :maxlength="500" /></a-form-item>
+              </template>
+              <a-alert v-if="testResult" :type="testResult.success ? 'success' : 'error'" show-icon
+                :message="`${testResult.elapsedMillis} ms`" :description="testResult.detail" />
+              <audio v-if="testResult?.audioUrl" :src="testResult.audioUrl" controls preload="none" style="width: 100%; margin-top: 8px" />
+            </a-card>
+
             <a-form-item style="margin-top: 24px">
               <a-space>
                 <!-- a-space 会给每个子项包一层 item，v-permission 的 display:none 会留下空格子，这里改用 v-if 整块不渲染 -->
@@ -802,9 +993,11 @@ fetchData()
                 >
                   {{ editingConfigId ? t('config.update', { type: t(configTypeInfo.label) }) : t('config.create', { type: t(configTypeInfo.label) }) }}
                 </a-button>
-                <a-button v-if="['llm', 'stt'].includes(props.configType)" :loading="testing" @click="handleTest">
+                <a-button v-if="['llm', 'stt'].includes(props.configType)" :loading="testing"
+                  :disabled="isVisionTest && !testSampleText.trim()" @click="handleTest">
                   {{ t('config.test') }}
                 </a-button>
+                <a-button v-if="configType === 'tts'" :loading="testing" :disabled="!testVoiceName.trim()" @click="handleTestTts">{{ t('config.test') }}</a-button>
                 <a-button @click="handleCancel">{{ t('common.cancel') }}</a-button>
               </a-space>
             </a-form-item>

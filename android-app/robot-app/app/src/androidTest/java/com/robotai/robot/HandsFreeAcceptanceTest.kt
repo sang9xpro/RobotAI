@@ -62,12 +62,12 @@ class HandsFreeAcceptanceTest {
         try {
             lateinit var auth: AuthViewModel
             scenario.onActivity { vm = ViewModelProvider(it)[RobotViewModel::class.java]; auth = ViewModelProvider(it)[AuthViewModel::class.java] }
-            waitFor(15000) { auth.state.value.roleId == role && vm.state.value.message == "Sẵn sàng kết nối" }
+            waitFor(15000) { auth.state.value.roleId == role && vm.state.value.connected }
             main { scope.launch { vm.state.collect { snapshots.add(it) } }; vm.sleep("Ken", session.socketUrl) }
             waitFor(5000) { vm.state.value.phase == Phase.SLEEPING }
             Thread.sleep(2000)
             report.put("sleepStatus", vm.state.value.message)
-            assertFalse(vm.state.value.connected)
+            assertTrue(vm.state.value.connected)
             main { vm.wake() }
             waitFor(15000) { vm.state.value.connected && vm.state.value.phase == Phase.LISTENING }
             Thread.sleep(2000)

@@ -107,6 +107,10 @@ public abstract class Player {
         this.messageService = messageService;
     }
 
+    public void confirmPlaybackCompleted() {
+        Runnable stopped = onPlaybackStopped;
+        if (stopped != null) stopped.run();
+    }
     public void sendStt(String userText){
         messageService.sendSttMessage(session, userText);
     }
@@ -132,6 +136,7 @@ public abstract class Player {
     protected void sendSentenceStart(String text, boolean reply) {
         if (reply) {
             spokenSentences.add(text);
+            if (session.getDialogueContext().getConversationTransport().enabled()) session.getDialogueContext().getConversationTransport().sentence(text);
         }
         recentSentences.addLast(new RecentSentence(normalize(text), DateUtils.millis()));
         while (recentSentences.size() > RECENT_SENTENCE_LIMIT) {
@@ -226,6 +231,7 @@ public abstract class Player {
      * 本轮已开始下发的句子拼成的文本，没有则为空串
      */
     public String spokenText() {
+        if (session.getDialogueContext().getConversationTransport().enabled()) return session.getDialogueContext().getConversationTransport().heardText();
         return String.join("", spokenSentences);
     }
 
@@ -280,6 +286,7 @@ public abstract class Player {
         try {
             try {
                 // 设备收到 stop 才从 SPEAKING 切回 LISTENING，先下发再收尾录音
+                session.getDialogueContext().getConversationTransport().finishOutput();
                 messageService.sendTtsMessage(session, null, "stop");
                 isPlaying = false;
                 // tts stop 下发后设备切换到聆听状态，服务端同步为 LISTENING
@@ -291,7 +298,7 @@ public abstract class Player {
                 }
             }
             Runnable stopped = onPlaybackStopped;
-            if (stopped != null) {
+            if (stopped != null && !session.getDialogueContext().getConversationTransport().enabled()) {
                 stopped.run();
             }
             // 检查是否需要执行后续操作（如关闭会话）；先取本地再清空再跑，避免重复执行
